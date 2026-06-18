@@ -1,0 +1,38 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: api-gateway
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api-gateway:8000"]
+
+  - job_name: agent-core
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["agent-core:8001"]
+
+  - job_name: load-ingestion
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["load-ingestion:8002"]
+
+  - job_name: load-processor
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["load-processor:8003"]
+
+  - job_name: profitability-engine
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["profitability-engine:8004"]
+
+  - job_name: market-intelligence
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["market-intelligence:8005"]

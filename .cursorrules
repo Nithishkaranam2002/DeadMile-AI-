@@ -1,0 +1,50 @@
+# DeadMile AI — Cursor Rules
+
+## Project Overview
+DeadMile AI is an enterprise AI platform that helps small trucking carriers (3-10 trucks) maximize profitability by eliminating dead miles. An AI agent analyzes loads, calculates TRUE net profitability, factors in destination market quality, and recommends optimal loads including multi-hop chains.
+
+## Architecture: 7 Microservices + Infrastructure
+- **api-gateway** — FastAPI + Pydantic v2, REST API routing to internal services
+- **agent-core** — LangGraph agent with 8 tools, SSE streaming
+- **load-ingestion** — Parses 3 text formats + PDF broker sheets, publishes to Kafka
+- **load-processor** — Kafka consumer, geocoding enrichment, Postgres storage
+- **profitability-engine** — Net profit: revenue - fuel - driver_pay - insurance - maintenance - tolls - deadhead
+- **market-intelligence** — Market scoring, XGBoost rate prediction, K-Means clustering
+- **frontend** — Next.js 15 App Router, Tailwind, shadcn/ui, Deck.gl maps
+
+## Data Stores
+- PostgreSQL 16 + PostGIS + TimescaleDB
+- Qdrant (vector search), Redis (caching), MinIO (PDF storage)
+
+## Event Streaming
+- Apache Kafka + Zookeeper (load ingestion pipeline)
+- Temporal (multi-hop load chain orchestration)
+
+## AI/ML Stack
+- LangGraph, LiteLLM → Featherless AI (Llama 3.1 70B)
+- Tavily (fuel prices), Langfuse (observability), Mem0 (driver memory)
+- XGBoost (rate prediction), scikit-learn K-Means (market clustering)
+
+## Agent Tools (8)
+search_loads, calculate_profitability, get_market_score, predict_lane_rate, find_load_chain, get_fuel_prices, semantic_load_search, get_driver_preferences
+
+## Coding Standards
+- Python 3.12, FastAPI 0.115+, Pydantic v2, type hints everywhere
+- Next.js 15 App Router, TypeScript 5, strict mode
+- Async I/O for all service-to-service calls
+- Environment variables via .env (never hardcode secrets)
+- Docker Compose for local dev (19 containers on deadmile-network)
+- Use PostGIS GEOGRAPHY(POINT, 4326) for all spatial data
+- Profitability must always be NET (all cost components included)
+
+## Load Data Formats
+- Format 1 (verbose): LOAD L-XXXXXXX with labeled fields
+- Format 2 (reference): === Load Ref L-XXXXXXX === with PU/DEL lines
+- Format 3 (compact): L-XXXXXXX | City,ST -> City,ST single-line
+- PDF: broker_load_sheet_XXX.pdf tabular columns
+
+## Equipment Types
+Dry Van | Flatbed | Reefer | Step Deck
+
+## Requirements
+None | Hazmat | Team | Liftgate

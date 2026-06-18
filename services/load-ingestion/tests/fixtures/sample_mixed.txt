@@ -1,0 +1,22 @@
+LOAD L-0000001
+  Origin......: Atlanta, GA 30303  (33.749, -84.388)
+  Destination.: Fort Worth, TX 76102  (32.7555, -97.3308)
+  Pickup......: 2026-06-15 13:00 to 2026-06-15 16:00
+  Delivery....: 2026-06-17 14:00 to 2026-06-17 18:00
+  Equipment...: Dry Van
+  Commodity...: Packaged food / 37,500 lbs
+  Miles.......: 908
+  Rate........: $1,700  ($1.87/mi)
+  Requirements: None
+
+=== Load Ref L-0000002 ===
+PU: Knoxville, TN 37902 | 2026-06-18 10:00 - 2026-06-18 13:00
+DEL: Toledo, OH 43604 | 2026-06-19 07:00 - 2026-06-19 13:00
+Equip Flatbed; 518 mi; 43,100# Lumber
+Pay $1,350 @ $2.61/mile
+Notes: None
+
+L-0000009 | Los Angeles,CA -> Oakland,CA
+  pu 2026-06-15 06:00  del 2026-06-16 13:00
+  Dry Van 398mi wt 20700 comm=Consumer goods
+  rate $1,025 rpm 2.58 req[None]

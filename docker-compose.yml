@@ -1,0 +1,495 @@
+# DeadMile AI — Docker Compose (19 containers)
+# Usage: cp .env.example .env && make up
+
+services:
+  # ===========================================================================
+  # Infrastructure — Data Stores
+  # ===========================================================================
+  postgres:
+    image: timescale/timescaledb-ha:pg16
+    container_name: deadmile-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-deadmile}
+      POSTGRES_USER: ${POSTGRES_USER:-deadmile}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-deadmile_secret_change_me}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infrastructure/init-db:/docker-entrypoint-initdb.d:ro
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-deadmile} -d ${POSTGRES_DB:-deadmile}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: deadmile-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.5
+    container_name: deadmile-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333 && echo -e \"GET /readyz HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n\" >&3 && cat <&3 | grep -q ok'"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    container_name: deadmile-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-deadmile_minio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-deadmile_minio_secret_change_me}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+    networks:
+      - deadmile-network
+
+  # ===========================================================================
+  # Infrastructure — Event Streaming
+  # ===========================================================================
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    container_name: deadmile-zookeeper
+    restart: unless-stopped
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - kafka-data:/var/lib/zookeeper/data
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 | grep imok"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    container_name: deadmile-kafka
+    restart: unless-stopped
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_LOG_RETENTION_HOURS: 168
+    ports:
+      - "9092:9092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-broker-api-versions --bootstrap-server localhost:9092 > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: deadmile-kafka-ui
+    restart: unless-stopped
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      KAFKA_CLUSTERS_0_NAME: deadmile
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    ports:
+      - "8090:8080"
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/actuator/health > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ===========================================================================
+  # Infrastructure — Workflow Orchestration
+  # ===========================================================================
+  temporal:
+    image: temporalio/auto-setup:1.25.2
+    container_name: deadmile-temporal
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-deadmile}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:-deadmile_secret_change_me}
+      POSTGRES_SEEDS: postgres
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
+    ports:
+      - "7233:7233"
+    volumes:
+      - temporal-data:/etc/temporal
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "tctl --address temporal:7233 cluster health 2>/dev/null | grep -q SERVING"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  temporal-ui:
+    image: temporalio/ui:2.31.2
+    container_name: deadmile-temporal-ui
+    restart: unless-stopped
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "8080:8080"
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080 > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  # ===========================================================================
+  # Application Services
+  # ===========================================================================
+  api-gateway:
+    build:
+      context: ./services/api-gateway
+      dockerfile: Dockerfile
+    container_name: deadmile-api-gateway
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SERVICE_NAME: api-gateway
+      SERVICE_PORT: 8000
+    ports:
+      - "${API_GATEWAY_PORT:-8000}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      agent-core:
+        condition: service_healthy
+      profitability-engine:
+        condition: service_healthy
+      market-intelligence:
+        condition: service_healthy
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health')\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  agent-core:
+    build:
+      context: ./services/agent-core
+      dockerfile: Dockerfile
+    container_name: deadmile-agent-core
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SERVICE_NAME: agent-core
+      SERVICE_PORT: 8001
+    ports:
+      - "${AGENT_CORE_PORT:-8001}:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  load-ingestion:
+    build:
+      context: .
+      dockerfile: services/load-ingestion/Dockerfile
+    container_name: deadmile-load-ingestion
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SERVICE_NAME: load-ingestion
+      SERVICE_PORT: 8002
+      DATA_TEXT_PATH: /data/text
+      DATA_PDF_PATH: /data/pdf
+      KAFKA_TOPIC_LOADS: raw-loads
+    ports:
+      - "${LOAD_INGESTION_PORT:-8002}:8002"
+    volumes:
+      - ./data:/data:ro
+    depends_on:
+      kafka:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8002/health')\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  load-processor:
+    build:
+      context: .
+      dockerfile: services/load-processor/Dockerfile
+    container_name: deadmile-load-processor
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SERVICE_NAME: load-processor
+      SERVICE_PORT: 8003
+      KAFKA_TOPIC_LOADS: raw-loads
+    ports:
+      - "${LOAD_PROCESSOR_PORT:-8003}:8003"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8003/health')\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  profitability-engine:
+    build:
+      context: .
+      dockerfile: services/profitability-engine/Dockerfile
+    container_name: deadmile-profitability-engine
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SERVICE_NAME: profitability-engine
+      SERVICE_PORT: 8004
+      MARKET_INTELLIGENCE_URL: http://market-intelligence:8005
+    ports:
+      - "${PROFITABILITY_ENGINE_PORT:-8004}:8004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      market-intelligence:
+        condition: service_healthy
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8004/health')\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  market-intelligence:
+    build:
+      context: .
+      dockerfile: services/market-intelligence/Dockerfile
+    container_name: deadmile-market-intelligence
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      SERVICE_NAME: market-intelligence
+      SERVICE_PORT: 8005
+    ports:
+      - "${MARKET_INTELLIGENCE_PORT:-8005}:8005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8005/health')\""]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ./services/frontend
+      dockerfile: Dockerfile
+    container_name: deadmile-frontend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      NEXT_PUBLIC_AGENT_URL: ${NEXT_PUBLIC_AGENT_URL:-http://localhost:8001}
+      NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:-}
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # ===========================================================================
+  # Infrastructure — Reverse Proxy & Monitoring
+  # ===========================================================================
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: deadmile-nginx
+    restart: unless-stopped
+    ports:
+      - "${NGINX_PORT:-80}:80"
+      - "${NGINX_SSL_PORT:-443}:443"
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+      agent-core:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost/health > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: deadmile-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:9090/-/healthy > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    container_name: deadmile-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-deadmile_grafana_change_me}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    ports:
+      - "${GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./infrastructure/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health > /dev/null 2>&1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+networks:
+  deadmile-network:
+    driver: bridge
+    name: deadmile-network
+
+volumes:
+  postgres-data:
+  redis-data:
+  qdrant-data:
+  minio-data:
+  kafka-data:
+  temporal-data:
+  grafana-data:
+  prometheus-data:
