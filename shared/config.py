@@ -25,6 +25,8 @@ class Settings(BaseSettings):
 
     market_intelligence_url: str = "http://market-intelligence:8005"
     profitability_engine_url: str = "http://profitability-engine:8004"
+    api_gateway_url: str = "http://api-gateway:8000"
+    agent_core_url: str = "http://agent-core:8001"
 
     @property
     def asyncpg_dsn(self) -> str:
