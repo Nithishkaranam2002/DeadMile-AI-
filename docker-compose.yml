@@ -214,6 +214,16 @@ services:
     environment:
       SERVICE_NAME: api-gateway
       SERVICE_PORT: 8000
+      DATABASE_URL: ${DATABASE_URL}
+      REDIS_URL: ${REDIS_URL}
+      API_GATEWAY_URL: http://api-gateway:8000
+      AGENT_CORE_URL: http://agent-core:8001
+      LOAD_INGESTION_URL: http://load-ingestion:8002
+      LOAD_PROCESSOR_URL: http://load-processor:8003
+      PROFITABILITY_ENGINE_URL: http://profitability-engine:8004
+      MARKET_INTELLIGENCE_URL: http://market-intelligence:8005
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_TASK_QUEUE: load-chain-queue
     ports:
       - "${API_GATEWAY_PORT:-8000}:8000"
     depends_on:
@@ -221,6 +231,12 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      profitability-engine:
+        condition: service_started
+      market-intelligence:
+        condition: service_started
+      temporal:
+        condition: service_started
     networks:
       - deadmile-network
     healthcheck:
@@ -393,10 +409,8 @@ services:
     env_file: .env
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-      NEXT_PUBLIC_AGENT_URL: ${NEXT_PUBLIC_AGENT_URL:-http://localhost:8001}
-      NEXT_PUBLIC_MARKET_URL: ${NEXT_PUBLIC_MARKET_URL:-http://localhost:8005}
-      NEXT_PUBLIC_PROFIT_URL: ${NEXT_PUBLIC_PROFIT_URL:-http://localhost:8004}
       NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:-}
+      NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-DeadMile AI}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
@@ -467,11 +481,13 @@ services:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-deadmile_grafana_change_me}
       GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/provisioning/dashboards/deadmile.json
     ports:
       - "${GRAFANA_PORT:-3001}:3000"
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./infrastructure/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./infrastructure/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./infrastructure/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
     depends_on:
       prometheus:
         condition: service_healthy

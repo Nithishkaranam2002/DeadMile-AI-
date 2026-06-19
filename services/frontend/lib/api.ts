@@ -9,10 +9,8 @@ import type {
   WhatIfResult,
 } from "./types";
 
+/** API Gateway — use /api when behind nginx, http://localhost:8000 for local dev */
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-const AGENT_BASE = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:8001";
-const MARKET_BASE = process.env.NEXT_PUBLIC_MARKET_URL || "http://localhost:8005";
-const PROFIT_BASE = process.env.NEXT_PUBLIC_PROFIT_URL || "http://localhost:8004";
 
 export function streamChat(
   message: string,
@@ -30,7 +28,7 @@ export function streamChat(
 
   (async () => {
     try {
-      const resp = await fetch(`${AGENT_BASE}/chat/stream`, {
+      const resp = await fetch(`${API_BASE}/recommend/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
         body: JSON.stringify({
@@ -95,7 +93,7 @@ export async function chatSync(
   equipment?: string,
   maxDeadhead?: number
 ): Promise<{ response: string }> {
-  const resp = await fetch(`${AGENT_BASE}/chat`, {
+  const resp = await fetch(`${API_BASE}/recommend`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -110,19 +108,19 @@ export async function chatSync(
 }
 
 export async function getTopMarkets(limit = 10): Promise<MarketScore[]> {
-  const resp = await fetch(`${MARKET_BASE}/markets/top?limit=${limit}`);
+  const resp = await fetch(`${API_BASE}/markets/top?limit=${limit}`);
   if (!resp.ok) throw new Error("Failed to fetch markets");
   return resp.json();
 }
 
 export async function getMarketHeatmap(): Promise<HeatmapData[]> {
-  const resp = await fetch(`${MARKET_BASE}/markets/heatmap`);
+  const resp = await fetch(`${API_BASE}/markets/heatmap`);
   if (!resp.ok) throw new Error("Failed to fetch heatmap");
   return resp.json();
 }
 
 export async function getMarketDetails(city: string, state: string): Promise<MarketDetail> {
-  const resp = await fetch(`${MARKET_BASE}/markets/${encodeURIComponent(city)}/${state}`);
+  const resp = await fetch(`${API_BASE}/markets/${encodeURIComponent(city)}/${state}`);
   if (!resp.ok) throw new Error("Market not found");
   return resp.json();
 }
@@ -132,7 +130,7 @@ export async function calculateWhatIf(
   lng: number,
   equipment?: string
 ): Promise<WhatIfResult> {
-  const resp = await fetch(`${PROFIT_BASE}/calculate/what-if`, {
+  const resp = await fetch(`${API_BASE}/simulate/what-if`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ lat, lng, equipment }),
@@ -161,7 +159,7 @@ export async function calculateBatch(
   equipment: string,
   limit = 10
 ): Promise<ProfitBreakdown[]> {
-  const resp = await fetch(`${PROFIT_BASE}/calculate/batch`, {
+  const resp = await fetch(`${API_BASE}/simulate/batch`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ driver_lat: lat, driver_lng: lng, equipment, limit }),
@@ -172,14 +170,15 @@ export async function calculateBatch(
 
 export async function getDashboardStats(): Promise<DashboardStats> {
   try {
-    const markets = await getTopMarkets(1);
-    const loads = await searchLoads(39.8, -98.5, 500);
+    const resp = await fetch(`${API_BASE}/dashboard/stats`);
+    if (!resp.ok) throw new Error("stats failed");
+    const data = await resp.json();
     return {
-      total_loads: loads.length || 2847,
-      avg_net_profit: 687,
-      best_market: markets[0] ? `${markets[0].city}, ${markets[0].state}` : "Atlanta, GA",
-      best_market_score: markets[0]?.market_score ?? 92,
-      avg_rate_per_mile: markets[0]?.avg_outbound_rate ?? 2.34,
+      total_loads: data.total_loads,
+      avg_net_profit: data.avg_net_profit,
+      best_market: data.best_market,
+      best_market_score: data.best_market_score,
+      avg_rate_per_mile: data.avg_rate_per_mile,
     };
   } catch {
     return {
@@ -192,8 +191,14 @@ export async function getDashboardStats(): Promise<DashboardStats> {
   }
 }
 
+export async function getHealthAll(): Promise<{ status: string; services: Record<string, { status: string }> }> {
+  const resp = await fetch(`${API_BASE}/health/all`);
+  if (!resp.ok) throw new Error("Health check failed");
+  return resp.json();
+}
+
 export async function getMarketClusters() {
-  const resp = await fetch(`${MARKET_BASE}/markets/clusters`);
+  const resp = await fetch(`${API_BASE}/markets/clusters`);
   if (!resp.ok) return [];
   return resp.json();
 }
@@ -205,7 +210,7 @@ export async function predictRate(
   destState: string,
   equipment = "Dry Van"
 ) {
-  const resp = await fetch(`${MARKET_BASE}/rates/predict`, {
+  const resp = await fetch(`${API_BASE}/rates/predict`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -217,5 +222,28 @@ export async function predictRate(
     }),
   });
   if (!resp.ok) throw new Error("Rate predict failed");
+  return resp.json();
+}
+
+export async function optimizeChain(params: {
+  start_lat: number;
+  start_lng: number;
+  equipment?: string;
+  num_hops?: number;
+  days?: number;
+  prefer_return_to_start?: boolean;
+}) {
+  const resp = await fetch(`${API_BASE}/chain/optimize`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+  });
+  if (!resp.ok) throw new Error("Chain optimization failed");
+  return resp.json();
+}
+
+export async function getChainResult(workflowId: string) {
+  const resp = await fetch(`${API_BASE}/chain/result/${workflowId}`);
+  if (!resp.ok) throw new Error("Chain result not ready");
   return resp.json();
 }

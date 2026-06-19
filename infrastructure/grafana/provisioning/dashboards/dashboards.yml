@@ -3,7 +3,7 @@ apiVersion: 1
 providers:
   - name: "DeadMile AI"
     orgId: 1
-    folder: ""
+    folder: "DeadMile AI"
     type: file
     disableDeletion: false
     editable: true
