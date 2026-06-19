@@ -83,7 +83,7 @@ Langfuse for observability — I can show you exactly WHY the agent picked each 
 
 "Small carriers lose $15,000-30,000 per truck per year to empty miles.
 DeadMile AI turns that into profit by making every load decision data-driven.
-We're using Featherless AI for inference, Tavily for real-time fuel data,
+We're using OpenAI GPT-4o-mini for inference, Tavily for real-time fuel data,
 and the entire system runs on Docker Compose — one command to deploy."
 
 ## Q&A Prep

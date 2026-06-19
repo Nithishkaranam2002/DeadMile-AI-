@@ -14,7 +14,7 @@
 
 ## Sponsor Integrations
 
-- [x] Featherless AI — Primary LLM inference (Llama 3.1 70B)
+- [x] OpenAI GPT-4o-mini — Primary LLM inference (LiteLLM-compatible alternates supported)
 - [x] Tavily — Real-time fuel prices and market data
 
 ## Technical Highlights
@@ -50,7 +50,7 @@
 git clone https://github.com/Nithishkaranam2002/DeadMile-AI-.git
 cd DeadMile-AI-
 cp .env.example .env
-# Add FEATHERLESS_API_KEY and NEXT_PUBLIC_MAPBOX_TOKEN
+# Add OPENAI_API_KEY, TAVILY_API_KEY, and NEXT_PUBLIC_MAPBOX_TOKEN (or MAPTILER_KEY)
 make setup
 # Open http://localhost:3000
 ```

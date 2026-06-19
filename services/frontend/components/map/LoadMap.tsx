@@ -9,8 +9,9 @@ import "mapbox-gl/dist/mapbox-gl.css";
 import { useAppStore } from "@/lib/store";
 import type { ProfitBreakdown } from "@/lib/types";
 import { MapControls } from "./MapControls";
+import { getMapConfig, mapConfigErrorMessage } from "@/lib/map-config";
 
-const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
+const mapConfig = getMapConfig();
 
 function marketRgb(label: string): [number, number, number] {
   const l = label.toLowerCase();
@@ -135,10 +136,10 @@ export function LoadMap() {
     return result;
   }, [driverLat, driverLng, recommendedLoads, selectedLoad, showArcs, showRoutes, showHeatmap, topMarkets, selectLoad]);
 
-  if (!MAPBOX_TOKEN) {
+  if (!mapConfig) {
     return (
       <div className="flex h-full items-center justify-center bg-surface text-text-secondary">
-        Set NEXT_PUBLIC_MAPBOX_TOKEN to enable the map
+        {mapConfigErrorMessage()}
       </div>
     );
   }
@@ -153,8 +154,8 @@ export function LoadMap() {
         layers={layers}
       >
         <Map
-          mapboxAccessToken={MAPBOX_TOKEN}
-          mapStyle="mapbox://styles/mapbox/dark-v11"
+          mapboxAccessToken={mapConfig.mapboxAccessToken}
+          mapStyle={mapConfig.mapStyle}
           style={{ width: "100%", height: "100%" }}
         >
           <NavigationControl position="bottom-right" />

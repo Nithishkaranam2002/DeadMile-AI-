@@ -54,7 +54,7 @@ graph TB
 
     subgraph AI Layer
         AG[Agent Core - LangGraph]
-        LLM[Featherless AI - Llama 3.1 70B]
+        LLM[OpenAI GPT-4o-mini]
         TAV[Tavily - Real-time Search]
         LF[Langfuse - Observability]
         MEM[Mem0 - Driver Memory]
@@ -120,7 +120,7 @@ graph TB
 ### Prerequisites
 
 - Docker & Docker Compose
-- API Keys: [Featherless AI](https://featherless.ai), [Mapbox](https://mapbox.com) (optional: Tavily, Langfuse)
+- API Keys: [OpenAI](https://platform.openai.com), [Mapbox](https://mapbox.com) or [MapTiler](https://maptiler.com) (optional: Tavily, Langfuse)
 
 ### Setup
 
@@ -131,7 +131,7 @@ cd DeadMile-AI-
 
 # Configure
 cp .env.example .env
-# Edit .env — add FEATHERLESS_API_KEY and NEXT_PUBLIC_MAPBOX_TOKEN
+# Edit .env — add OPENAI_API_KEY and NEXT_PUBLIC_MAPBOX_TOKEN (or MAPTILER_KEY)
 
 # Validate environment
 python scripts/validate_env.py
@@ -183,7 +183,7 @@ See **[DEMO.md](./DEMO.md)** for the complete 5-minute demo script with talking 
 |------|---------|
 | LangGraph | Multi-step ReAct agent with 8 tools |
 | LiteLLM | Unified LLM interface with fallback |
-| Featherless AI | Llama 3.1 70B inference (hackathon sponsor) |
+| OpenAI GPT-4o-mini | Primary LLM inference (Groq/Featherless/Ollama via LiteLLM) |
 | Tavily | Real-time fuel prices & market data (hackathon sponsor) |
 | Langfuse | LLM observability & tracing |
 | Mem0 | Persistent driver preference memory |
@@ -271,7 +271,7 @@ Drag a pin anywhere on the US map — instantly see available loads, projected e
 
 This project addresses **Statement 6: Trucking Load Optimization Agent** from Buildathon Dallas 2026.
 
-**Sponsor integrations:** Featherless AI (LLM inference), Tavily (real-time search)
+**Sponsor integrations:** Tavily (real-time search). LLM via OpenAI GPT-4o-mini (swap providers via `LLM_MODEL` + `LLM_API_BASE`).
 
 ## 📄 License
 

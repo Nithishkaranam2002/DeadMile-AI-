@@ -21,7 +21,7 @@ DeadMile AI is an enterprise AI platform that helps small trucking carriers (3-1
 - Temporal (multi-hop load chain orchestration)
 
 ## AI/ML Stack
-- LangGraph, LiteLLM → Featherless AI (Llama 3.1 70B)
+- LangGraph, LiteLLM → OpenAI GPT-4o-mini (Groq/Featherless/Ollama via LLM_API_BASE)
 - Tavily (fuel prices), Langfuse (observability), Mem0 (driver memory)
 - XGBoost (rate prediction), scikit-learn K-Means (market clustering)
 

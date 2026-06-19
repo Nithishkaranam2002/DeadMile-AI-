@@ -19,11 +19,9 @@ logger = structlog.get_logger(__name__)
 
 
 def _build_llm() -> ChatOpenAI:
-    api_key = os.getenv("FEATHERLESS_API_KEY") or os.getenv("OPENAI_API_KEY", "sk-placeholder")
-    base_url = os.getenv("FEATHERLESS_BASE_URL", "https://api.featherless.ai/v1")
-    model = os.getenv("LLM_MODEL", "meta-llama/Llama-3.1-70B-Instruct")
-    if not model.startswith("openai/") and base_url:
-        model = model.replace("openai/", "")
+    """OpenAI via ChatOpenAI — best tool-calling support for LangGraph ReAct agent."""
+    api_key = os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY", "")
+    model = os.getenv("LLM_MODEL", "gpt-4o-mini")
 
     kwargs: dict[str, Any] = {
         "model": model,
@@ -31,8 +29,10 @@ def _build_llm() -> ChatOpenAI:
         "temperature": 0.1,
         "max_tokens": 4096,
     }
-    if os.getenv("FEATHERLESS_API_KEY"):
-        kwargs["base_url"] = base_url
+    api_base = os.getenv("LLM_API_BASE")
+    if api_base:
+        kwargs["base_url"] = api_base
+
     return ChatOpenAI(**kwargs)
 
 

@@ -9,7 +9,6 @@ import structlog
 
 logger = structlog.get_logger(__name__)
 
-# In-process fallback when Mem0 is unavailable
 _fallback_memory: dict[str, list[str]] = {}
 
 
@@ -21,7 +20,14 @@ class DriverMemory:
         try:
             from mem0 import Memory
 
-            config = {
+            config: dict[str, Any] = {
+                "llm": {
+                    "provider": "openai",
+                    "config": {
+                        "model": os.getenv("LLM_MODEL", "gpt-4o-mini"),
+                        "api_key": os.getenv("OPENAI_API_KEY", ""),
+                    },
+                },
                 "vector_store": {
                     "provider": "qdrant",
                     "config": {
@@ -29,8 +35,12 @@ class DriverMemory:
                         "port": int(os.getenv("QDRANT_PORT", "6333")),
                         "collection_name": "driver_memories",
                     },
-                }
+                },
             }
+            api_base = os.getenv("LLM_API_BASE")
+            if api_base:
+                config["llm"]["config"]["openai_base_url"] = api_base
+
             self._memory = Memory.from_config(config)
         except Exception as exc:
             logger.warning("mem0_init_failed_using_fallback", error=str(exc))

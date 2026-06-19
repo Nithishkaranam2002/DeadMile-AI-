@@ -50,30 +50,46 @@ async def get_fuel_prices(state: Optional[str] = None, region: Optional[str] = N
     query_target = state or region or "national average"
     api_key = os.getenv("TAVILY_API_KEY", "")
 
-    if api_key:
-        try:
-            from tavily import TavilyClient
+    if not api_key:
+        data = {
+            "diesel_price_per_gallon": FUEL_PRICE_PER_GALLON,
+            "source": "default",
+            "state": state,
+            "region": region,
+            "national_average": FUEL_PRICE_PER_GALLON,
+            "note": "TAVILY_API_KEY not set — using default $3.90/gal",
+        }
+        await emit("tool_result", {
+            "tool": "get_fuel_prices",
+            "price": FUEL_PRICE_PER_GALLON,
+            "source": "default",
+            "duration_ms": int((time.time() - start) * 1000),
+        })
+        return json.dumps(data)
 
-            client = TavilyClient(api_key=api_key)
-            result = client.search(
-                query=f"current diesel fuel price per gallon {query_target} United States 2026",
-                max_results=3,
-            )
-            for item in result.get("results", []):
-                price = _parse_price(item.get("content", ""))
-                if price:
-                    data = {
-                        "diesel_price_per_gallon": price,
-                        "source": "tavily",
-                        "state": state,
-                        "region": region,
-                        "national_average": price if not state else FUEL_PRICE_PER_GALLON,
-                    }
-                    await cache.set(cache_key, data, ttl=21600)
-                    await emit("tool_result", {"tool": "get_fuel_prices", "price": price, "duration_ms": int((time.time() - start) * 1000)})
-                    return json.dumps(data)
-        except Exception as exc:
-            await emit("thinking", {"message": f"Tavily unavailable, using default fuel price: {exc}"})
+    try:
+        from tavily import TavilyClient
+
+        client = TavilyClient(api_key=api_key)
+        result = client.search(
+            query=f"current diesel fuel price per gallon {query_target} United States 2026",
+            max_results=3,
+        )
+        for item in result.get("results", []):
+            price = _parse_price(item.get("content", ""))
+            if price:
+                data = {
+                    "diesel_price_per_gallon": price,
+                    "source": "tavily",
+                    "state": state,
+                    "region": region,
+                    "national_average": price if not state else FUEL_PRICE_PER_GALLON,
+                }
+                await cache.set(cache_key, data, ttl=21600)
+                await emit("tool_result", {"tool": "get_fuel_prices", "price": price, "duration_ms": int((time.time() - start) * 1000)})
+                return json.dumps(data)
+    except Exception as exc:
+        await emit("thinking", {"message": f"Tavily unavailable, using default fuel price: {exc}"})
 
     data = {
         "diesel_price_per_gallon": FUEL_PRICE_PER_GALLON,

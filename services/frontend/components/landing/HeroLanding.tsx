@@ -252,7 +252,7 @@ export function HeroLanding() {
           className="mt-12 text-xs text-text-secondary"
         >
           Powered by:{" "}
-          <span className="text-primary">Featherless AI</span> ·{" "}
+          <span className="text-primary">OpenAI</span> ·{" "}
           <span className="text-primary">Tavily</span> ·{" "}
           <span className="text-primary">LangGraph</span>
           <br />

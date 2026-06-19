@@ -1,4 +1,4 @@
-"""Unified LLM interface via LiteLLM pointing to Featherless AI."""
+"""Unified LLM interface via LiteLLM (OpenAI primary, optional alt providers)."""
 
 from __future__ import annotations
 
@@ -16,9 +16,9 @@ class LLMClient:
     """Unified LLM interface with automatic fallback."""
 
     def __init__(self) -> None:
-        self.model = os.getenv("LLM_MODEL", "openai/meta-llama/Llama-3.1-70B-Instruct")
-        self.api_base = os.getenv("FEATHERLESS_BASE_URL", "https://api.featherless.ai/v1")
-        self.api_key = os.getenv("FEATHERLESS_API_KEY", "")
+        self.model = os.getenv("LLM_MODEL", "gpt-4o-mini")
+        self.api_key = os.getenv("OPENAI_API_KEY") or os.getenv("GROQ_API_KEY", "")
+        self.api_base = os.getenv("LLM_API_BASE") or None
         self.fallback_model = os.getenv("FALLBACK_LLM_MODEL", "gpt-4o-mini")
         self.fallback_api_key = os.getenv("OPENAI_API_KEY", "")
 
@@ -31,11 +31,12 @@ class LLMClient:
         kwargs: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
-            "api_base": self.api_base,
-            "api_key": self.api_key,
             "temperature": temperature,
             "max_tokens": 4096,
+            "api_key": self.api_key,
         }
+        if self.api_base:
+            kwargs["api_base"] = self.api_base
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
@@ -44,8 +45,8 @@ class LLMClient:
             return await acompletion(**kwargs)
         except Exception as exc:
             logger.warning("primary_llm_failed", error=str(exc), model=self.model)
-            if self.fallback_api_key:
-                fallback_kwargs = {
+            if self.fallback_api_key and self.model != self.fallback_model:
+                fallback_kwargs: dict[str, Any] = {
                     "model": self.fallback_model,
                     "messages": messages,
                     "api_key": self.fallback_api_key,
