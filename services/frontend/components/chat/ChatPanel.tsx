@@ -30,6 +30,7 @@ export function ChatPanel() {
     equipment,
     maxDeadhead,
     isStreaming,
+    searchRequest,
     setDriverLocation,
     setEquipment,
     setMaxDeadhead,
@@ -38,6 +39,8 @@ export function ChatPanel() {
     setAgentStatus,
     setRecommendedLoads,
     setConnected,
+    clearSearchRequest,
+    setMapViewState,
   } = useAppStore();
 
   const handleCityChange = (value: string) => {
@@ -51,35 +54,62 @@ export function ChatPanel() {
     setSuggestions([]);
   };
 
-  const sendMessage = useCallback(async () => {
-    if (!input.trim() || isStreaming) return;
-    const message = input.trim();
-    setInput("");
-    addMessage({ id: Date.now().toString(), type: "user", content: message, timestamp: Date.now() });
-    setIsStreaming(true);
-    setAgentStatus("thinking");
-    setEvents([]);
+  const sendMessage = useCallback(
+    async (overrideMessage?: string) => {
+      const message = (overrideMessage ?? input).trim();
+      if (!message || isStreaming) return;
+      if (!overrideMessage) setInput("");
+      addMessage({ id: Date.now().toString(), type: "user", content: message, timestamp: Date.now() });
+      setIsStreaming(true);
+      setAgentStatus("thinking");
+      setEvents([]);
 
-    const lat = driverLat ?? 32.7767;
-    const lng = driverLng ?? -96.797;
+      const lat = driverLat ?? 32.7767;
+      const lng = driverLng ?? -96.797;
 
-    abortRef.current?.abort();
-    abortRef.current = streamChat(
-      message,
-      lat,
-      lng,
-      (event) => setEvents((prev) => [...prev, event]),
-      { equipment, maxDeadhead }
-    );
+      if (driverLat && driverLng) {
+        setMapViewState({ latitude: lat, longitude: lng, zoom: 6, pitch: 20, bearing: 0 });
+      }
 
-    try {
-      const loads = await calculateBatch(lat, lng, equipment, 5);
-      if (loads.length) setRecommendedLoads(loads);
-      setConnected(true);
-    } catch {
-      setConnected(false);
+      abortRef.current?.abort();
+      abortRef.current = streamChat(
+        message,
+        lat,
+        lng,
+        (event) => setEvents((prev) => [...prev, event]),
+        { equipment, maxDeadhead }
+      );
+
+      try {
+        const loads = await calculateBatch(lat, lng, equipment, 5);
+        if (loads.length) setRecommendedLoads(loads);
+        setConnected(true);
+      } catch {
+        setConnected(false);
+      }
+    },
+    [
+      input,
+      isStreaming,
+      driverLat,
+      driverLng,
+      equipment,
+      maxDeadhead,
+      addMessage,
+      setIsStreaming,
+      setAgentStatus,
+      setRecommendedLoads,
+      setConnected,
+      setMapViewState,
+    ]
+  );
+
+  useEffect(() => {
+    if (searchRequest?.message) {
+      void sendMessage(searchRequest.message);
+      clearSearchRequest();
     }
-  }, [input, isStreaming, driverLat, driverLng, equipment, maxDeadhead, addMessage, setIsStreaming, setAgentStatus, setRecommendedLoads, setConnected]);
+  }, [searchRequest, sendMessage, clearSearchRequest]);
 
   useEffect(() => {
     if (events.some((e) => e.type === "done" || e.type === "error")) {
@@ -102,7 +132,7 @@ export function ChatPanel() {
         <div className="relative">
           <Input
             placeholder="📍 Location (city)"
-            value={cityQuery || `${driverCity}, ${driverState}`}
+            value={cityQuery || (driverCity ? `${driverCity}, ${driverState}` : "")}
             onChange={(e) => handleCityChange(e.target.value)}
           />
           {suggestions.length > 0 && (
@@ -158,7 +188,7 @@ export function ChatPanel() {
           disabled={isStreaming}
         />
         <VoiceInput onResult={(text) => setInput(text)} />
-        <Button onClick={sendMessage} disabled={isStreaming || !input.trim()} size="icon">
+        <Button onClick={() => sendMessage()} disabled={isStreaming || !input.trim()} size="icon">
           <Send className="h-4 w-4" />
         </Button>
       </div>

@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { HeroLanding } from "@/components/landing/HeroLanding";
 import { LoadMapDynamic } from "@/components/map/LoadMapDynamic";
 import { LoadCard } from "@/components/loads/LoadCard";
 import { LoadChainView } from "@/components/loads/LoadChainView";
@@ -12,6 +14,7 @@ import { getDashboardStats } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 
 export default function DashboardPage() {
+  const showHero = useAppStore((s) => s.showHero);
   const recommendedLoads = useAppStore((s) => s.recommendedLoads);
   const loadChain = useAppStore((s) => s.loadChain);
   const selectLoad = useAppStore((s) => s.selectLoad);
@@ -36,44 +39,63 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="flex h-[calc(100vh-5.5rem)] flex-col lg:flex-row">
-      <aside className="w-full shrink-0 lg:w-[400px] lg:border-r lg:border-border">
-        <div className="h-[45vh] lg:h-full">
-          <ChatPanel />
-        </div>
-      </aside>
+    <AnimatePresence mode="wait">
+      {showHero ? (
+        <motion.div
+          key="hero"
+          initial={{ opacity: 1 }}
+          exit={{ opacity: 0, y: -24 }}
+          transition={{ duration: 0.4 }}
+        >
+          <HeroLanding />
+        </motion.div>
+      ) : (
+        <motion.div
+          key="dashboard"
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45 }}
+          className="flex h-[calc(100vh-5.5rem)] flex-col lg:flex-row"
+        >
+          <aside className="w-full shrink-0 lg:w-[400px] lg:border-r lg:border-border">
+            <div className="h-[45vh] lg:h-full">
+              <ChatPanel />
+            </div>
+          </aside>
 
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <div className="space-y-3 border-b border-border p-4">
-          <DashboardStats />
-        </div>
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="space-y-3 border-b border-border p-4">
+              <DashboardStats />
+            </div>
 
-        <div className="relative min-h-[300px] flex-1">
-          <ErrorBoundary fallbackTitle="Map failed to load">
-            <LoadMapDynamic />
-          </ErrorBoundary>
-        </div>
-
-        <div className="max-h-[40vh] overflow-y-auto border-t border-border p-4">
-          {recommendedLoads.length >= 2 && (
-            <div className="mb-4">
-              <ErrorBoundary fallbackTitle="Comparison chart failed">
-                <LoadCompare loads={recommendedLoads} />
+            <div className="relative min-h-[300px] flex-1">
+              <ErrorBoundary fallbackTitle="Map failed to load">
+                <LoadMapDynamic />
               </ErrorBoundary>
             </div>
-          )}
-          <div className="mb-4 grid gap-4 lg:grid-cols-2">
-            {recommendedLoads.map((load, i) => (
-              <LoadCard key={load.load_id} load={load} rank={i + 1} onShowMap={handleShowMap} />
-            ))}
-          </div>
-          {loadChain && (
-            <div className="mt-4">
-              <LoadChainView chain={loadChain} />
+
+            <div className="max-h-[40vh] overflow-y-auto border-t border-border p-4">
+              {recommendedLoads.length >= 2 && (
+                <div className="mb-4">
+                  <ErrorBoundary fallbackTitle="Comparison chart failed">
+                    <LoadCompare loads={recommendedLoads} />
+                  </ErrorBoundary>
+                </div>
+              )}
+              <div className="mb-4 grid gap-4 lg:grid-cols-2">
+                {recommendedLoads.map((load, i) => (
+                  <LoadCard key={load.load_id} load={load} rank={i + 1} onShowMap={handleShowMap} />
+                ))}
+              </div>
+              {loadChain && (
+                <div className="mt-4">
+                  <LoadChainView chain={loadChain} />
+                </div>
+              )}
             </div>
-          )}
-        </div>
-      </div>
-    </div>
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

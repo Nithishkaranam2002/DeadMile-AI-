@@ -63,6 +63,7 @@ services:
       start_period: 20s
 
   minio:
+    profiles: ["full"]
     image: minio/minio:RELEASE.2024-12-18T13-15-44Z
     container_name: deadmile-minio
     restart: unless-stopped
@@ -82,6 +83,7 @@ services:
   # Infrastructure — Event Streaming
   # ===========================================================================
   zookeeper:
+    profiles: ["full"]
     image: confluentinc/cp-zookeeper:7.6.1
     container_name: deadmile-zookeeper
     restart: unless-stopped
@@ -100,6 +102,7 @@ services:
       start_period: 30s
 
   kafka:
+    profiles: ["full"]
     image: confluentinc/cp-kafka:7.6.1
     container_name: deadmile-kafka
     restart: unless-stopped
@@ -129,6 +132,7 @@ services:
       start_period: 60s
 
   kafka-ui:
+    profiles: ["full"]
     image: provectuslabs/kafka-ui:v0.7.2
     container_name: deadmile-kafka-ui
     restart: unless-stopped
@@ -154,6 +158,7 @@ services:
   # Infrastructure — Workflow Orchestration
   # ===========================================================================
   temporal:
+    profiles: ["full"]
     image: temporalio/auto-setup:1.25.2
     container_name: deadmile-temporal
     restart: unless-stopped
@@ -181,6 +186,7 @@ services:
       start_period: 60s
 
   temporal-ui:
+    profiles: ["full"]
     image: temporalio/ui:2.31.2
     container_name: deadmile-temporal-ui
     restart: unless-stopped
@@ -235,8 +241,6 @@ services:
         condition: service_started
       market-intelligence:
         condition: service_started
-      temporal:
-        condition: service_started
     networks:
       - deadmile-network
     healthcheck:
@@ -286,6 +290,7 @@ services:
       start_period: 30s
 
   load-ingestion:
+    profiles: ["full"]
     build:
       context: .
       dockerfile: services/load-ingestion/Dockerfile
@@ -317,6 +322,7 @@ services:
       start_period: 30s
 
   load-processor:
+    profiles: ["full"]
     build:
       context: .
       dockerfile: services/load-processor/Dockerfile
@@ -429,6 +435,7 @@ services:
   # Infrastructure — Reverse Proxy & Monitoring
   # ===========================================================================
   nginx:
+    profiles: ["full"]
     image: nginx:1.27-alpine
     container_name: deadmile-nginx
     restart: unless-stopped
@@ -453,6 +460,7 @@ services:
       retries: 5
 
   prometheus:
+    profiles: ["full"]
     image: prom/prometheus:v2.54.1
     container_name: deadmile-prometheus
     restart: unless-stopped
@@ -474,6 +482,7 @@ services:
       retries: 5
 
   grafana:
+    profiles: ["full"]
     image: grafana/grafana:11.3.0
     container_name: deadmile-grafana
     restart: unless-stopped

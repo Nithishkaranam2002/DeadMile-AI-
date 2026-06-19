@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { MOCK_CHAIN, MOCK_LOADS, MOCK_MARKETS, MOCK_STATS } from "./mock-data";
+import { MOCK_MARKETS, MOCK_STATS } from "./mock-data";
 import type { ChatMessage, LoadChain, MarketScore, ProfitBreakdown, ViewState } from "./types";
 
 interface AppStore {
@@ -23,6 +23,8 @@ interface AppStore {
   connected: boolean;
   totalLoads: number;
   dashboardStats: typeof MOCK_STATS;
+  showHero: boolean;
+  searchRequest: { message: string; id: number } | null;
 
   setDriverLocation: (lat: number, lng: number, city: string, state: string) => void;
   setEquipment: (equipment: string) => void;
@@ -41,21 +43,24 @@ interface AppStore {
   setMapViewState: (v: ViewState) => void;
   setTopMarkets: (markets: MarketScore[]) => void;
   setConnected: (v: boolean) => void;
+  dismissHero: () => void;
+  triggerSearch: (message: string) => void;
+  clearSearchRequest: () => void;
 }
 
 export const useAppStore = create<AppStore>((set) => ({
-  driverLat: 32.7767,
-  driverLng: -96.797,
-  driverCity: "Dallas",
-  driverState: "TX",
+  driverLat: null,
+  driverLng: null,
+  driverCity: "",
+  driverState: "",
   equipment: "Dry Van",
   maxDeadhead: 250,
   messages: [],
   isStreaming: false,
   agentStatus: "ready",
   selectedLoad: null,
-  recommendedLoads: MOCK_LOADS,
-  loadChain: MOCK_CHAIN,
+  recommendedLoads: [],
+  loadChain: null,
   showHeatmap: false,
   showArcs: true,
   showRoutes: true,
@@ -64,6 +69,8 @@ export const useAppStore = create<AppStore>((set) => ({
   connected: true,
   totalLoads: MOCK_STATS.total_loads,
   dashboardStats: MOCK_STATS,
+  showHero: true,
+  searchRequest: null,
 
   setDriverLocation: (lat, lng, city, state) =>
     set({ driverLat: lat, driverLng: lng, driverCity: city, driverState: state }),
@@ -88,4 +95,7 @@ export const useAppStore = create<AppStore>((set) => ({
   setMapViewState: (mapViewState) => set({ mapViewState }),
   setTopMarkets: (topMarkets) => set({ topMarkets }),
   setConnected: (connected) => set({ connected }),
+  dismissHero: () => set({ showHero: false }),
+  triggerSearch: (message) => set({ searchRequest: { message, id: Date.now() } }),
+  clearSearchRequest: () => set({ searchRequest: null }),
 }));

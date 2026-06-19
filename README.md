@@ -1,233 +1,284 @@
-# DeadMile AI
+<div align="center">
 
-**Intelligent Load Optimization for Small Trucking Carriers**
+# 🚛 DeadMile AI
 
-DeadMile AI is an enterprise-grade AI platform that helps small trucking carriers (3–10 trucks) maximize profitability by eliminating dead miles. An AI agent analyzes thousands of loads, calculates true net profitability, factors in destination market quality, and recommends optimal loads — including multi-hop chains that maximize weekly earnings.
+### Intelligent Load Optimization Agent for Trucking
 
-[![Python 3.12](https://img.shields.io/badge/Python-3.12-blue.svg)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-green.svg)](https://fastapi.tiangolo.com/)
-[![Next.js 15](https://img.shields.io/badge/Next.js-15-black.svg)](https://nextjs.org/)
-[![LangGraph](https://img.shields.io/badge/LangGraph-0.2+-purple.svg)](https://langchain-ai.github.io/langgraph/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)](https://docs.docker.com/compose/)
+**Stop losing money on empty miles. Maximize NET profit, not gross revenue.**
 
----
+[![Buildathon 2026](https://img.shields.io/badge/Buildathon-2026_Statement_6-cyan?style=for-the-badge)](https://buildathon.dev)
+[![Python](https://img.shields.io/badge/Python-3.12-blue?style=for-the-badge&logo=python)](https://python.org)
+[![Next.js](https://img.shields.io/badge/Next.js-15-black?style=for-the-badge&logo=next.js)](https://nextjs.org)
+[![LangGraph](https://img.shields.io/badge/LangGraph-Agent-green?style=for-the-badge)](https://langchain-ai.github.io/langgraph/)
+[![Docker](https://img.shields.io/badge/Docker-19_Containers-blue?style=for-the-badge&logo=docker)](https://docker.com)
 
-## The Problem
+<img src="docs/hero-screenshot.svg" alt="DeadMile AI Dashboard" width="800" />
 
-| Stat | Impact |
-|------|--------|
-| 95% of US trucking companies run fewer than 10 trucks | Thin margins (3–6%) leave no room for waste |
-| 15–20% of all truck miles are empty (deadhead) | Zero revenue on every dead mile |
-| Gross rate ≠ true profit | A high-paying load to a dead market costs more than a cheaper load to a busy hub |
+[Live Demo](#demo) · [Architecture](#architecture) · [Quick Start](#quick-start) · [Tech Stack](#tech-stack)
 
-DeadMile AI calculates **true net profitability**: revenue minus fuel, driver pay, insurance, maintenance, tolls, and deadhead miles in both directions.
+</div>
 
 ---
 
-## Architecture
+## 🎯 The Problem
+
+95% of US trucking companies run fewer than 10 trucks with razor-thin 3-6% margins. The biggest controllable cost is the **empty mile** — 15-20% of all truck miles earn nothing. Drivers pick loads based on gross rate, not net profitability, losing **$15,000-30,000 per truck per year**.
+
+A load paying $3,000 that drops a truck in a dead market (no outbound loads) is **worse** than a $2,200 load to a hot market with plenty of freight.
+
+## 💡 The Solution
+
+DeadMile AI is an **AI agent** that recommends the most profitable loads by calculating **TRUE net profit** — revenue minus fuel, driver pay, insurance, maintenance, tolls, dispatch fees, and critically, **deadhead costs in both directions**.
+
+### Key Differentiators
+
+- **Net profit, not gross rate** — full P&L for every load recommendation
+- **Destination market scoring** — knows which cities have freight and which are dead ends
+- **Multi-hop load chaining** — optimizes 3-5 load sequences for maximum weekly earnings
+- **Rate prediction** — XGBoost model forecasts lane rate trends
+- **Driver memory** — learns driver preferences over time
+- **Real-time fuel prices** — Tavily integration for current diesel costs
+
+## 🏗️ Architecture
 
 ```mermaid
 graph TB
-    subgraph Client
-        FE[Frontend<br/>Next.js 15 + Deck.gl]
+    subgraph Frontend
+        UI[Next.js 15 + Deck.gl]
     end
 
-    subgraph Gateway
+    subgraph API Layer
         NG[Nginx Reverse Proxy]
-        API[API Gateway<br/>FastAPI]
+        GW[API Gateway - FastAPI]
     end
 
-    subgraph AI
-        AGENT[Agent Core<br/>LangGraph + 8 Tools]
-        LLM[Featherless AI<br/>Llama 3.1 70B]
-        MEM[Mem0 Driver Memory]
+    subgraph AI Layer
+        AG[Agent Core - LangGraph]
+        LLM[Featherless AI - Llama 3.1 70B]
+        TAV[Tavily - Real-time Search]
+        LF[Langfuse - Observability]
+        MEM[Mem0 - Driver Memory]
     end
 
-    subgraph Ingestion
-        ING[Load Ingestion<br/>Text + PDF Parsers]
-        KAFKA[Apache Kafka]
-        PROC[Load Processor<br/>Geocoding + Enrichment]
+    subgraph Compute Layer
+        PE[Profitability Engine]
+        MI[Market Intelligence]
+        XGB[XGBoost Rate Predictor]
+        KM[K-Means Clusterer]
     end
 
-    subgraph Analytics
-        PROF[Profitability Engine]
-        MKT[Market Intelligence<br/>XGBoost + K-Means]
+    subgraph Data Layer
+        PG[(PostgreSQL + PostGIS)]
+        TS[(TimescaleDB)]
+        QD[(Qdrant Vectors)]
+        RD[(Redis Cache)]
+        MN[(MinIO Storage)]
     end
 
-    subgraph Orchestration
-        TEMP[Temporal<br/>Multi-Hop Chains]
+    subgraph Streaming
+        KF[Apache Kafka]
+        TMP[Temporal Workflows]
     end
 
-    subgraph Data
-        PG[(PostgreSQL 16<br/>PostGIS + TimescaleDB)]
-        REDIS[(Redis Cache)]
-        QDRANT[(Qdrant Vectors)]
-        MINIO[(MinIO PDFs)]
+    subgraph Monitoring
+        PM[Prometheus]
+        GF[Grafana]
     end
 
-    subgraph Observability
-        PROM[Prometheus]
-        GRAF[Grafana]
-        LF[Langfuse]
-    end
-
-    FE --> NG
-    NG --> API
-    NG --> AGENT
-    NG --> FE
-    API --> AGENT
-    API --> PROF
-    API --> MKT
-    AGENT --> LLM
-    AGENT --> MEM
-    AGENT --> PROF
-    AGENT --> MKT
-    AGENT --> TEMP
-    AGENT --> QDRANT
-    ING --> KAFKA
-    KAFKA --> PROC
-    PROC --> PG
-    PROF --> PG
-    PROF --> REDIS
-    MKT --> PG
-    MKT --> REDIS
-    ING --> MINIO
-    AGENT --> LF
-    API --> PROM
-    PROM --> GRAF
+    UI --> NG --> GW
+    GW --> AG
+    AG --> LLM
+    AG --> TAV
+    AG --> LF
+    AG --> MEM
+    GW --> PE
+    GW --> MI
+    MI --> XGB
+    MI --> KM
+    PE --> PG
+    MI --> PG
+    MI --> TS
+    AG --> QD
+    GW --> RD
+    GW --> TMP
+    KF --> PG
+    PM --> GF
 ```
 
-### 19-Container Stack
+**19 Docker Containers:**
 
-| Layer | Containers |
-|-------|-----------|
-| **Data Stores** | PostgreSQL, Redis, Qdrant, MinIO |
-| **Event Streaming** | Zookeeper, Kafka, Kafka UI |
+| Category | Services |
+|----------|----------|
+| **Application** | API Gateway, Agent Core, Load Ingestion, Load Processor, Profitability Engine, Market Intelligence, Frontend |
+| **Data** | PostgreSQL + PostGIS, Redis, Qdrant, MinIO |
+| **Streaming** | Kafka, Zookeeper, Kafka UI |
 | **Orchestration** | Temporal, Temporal UI |
-| **Services** | API Gateway, Agent Core, Load Ingestion, Load Processor, Profitability Engine, Market Intelligence, Frontend |
 | **Infrastructure** | Nginx, Prometheus, Grafana |
 
----
-
-## Tech Stack
-
-### Backend
-- **Python 3.12** with FastAPI 0.115+ and Pydantic v2
-- **LangGraph** agent orchestration with 8 specialized tools
-- **LiteLLM** → Featherless AI (Llama 3.1 70B)
-- **Apache Kafka** real-time load ingestion pipeline
-- **Temporal** multi-hop load chain workflows
-
-### Data
-- **PostgreSQL 16** + PostGIS (geospatial) + TimescaleDB (rate time-series)
-- **Qdrant** semantic load search
-- **Redis** profitability and market score caching
-- **MinIO** S3-compatible PDF storage
-
-### ML
-- **XGBoost** lane rate prediction with confidence intervals
-- **scikit-learn K-Means** market clustering
-- **Tavily** real-time fuel price lookup
-
-### Frontend
-- **Next.js 15** App Router + TypeScript 5
-- **Tailwind CSS** + shadcn/ui
-- **Deck.gl** + react-map-gl (3D hexagon heatmaps, animated arcs)
-- **Tremor** dashboard charts, **Framer Motion** animations
-- **Whisper.js** browser voice input, SSE agent streaming
-
----
-
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
-- Docker Desktop 4.25+ with Compose v2
-- 16 GB RAM recommended (19 containers)
-- API keys: [Featherless AI](https://featherless.ai), [Tavily](https://tavily.com), [Mapbox](https://mapbox.com) (optional for maps)
+- Docker & Docker Compose
+- API Keys: [Featherless AI](https://featherless.ai), [Mapbox](https://mapbox.com) (optional: Tavily, Langfuse)
 
 ### Setup
 
 ```bash
-# Clone and enter project
-cd deadmile-ai
+# Clone
+git clone https://github.com/Nithishkaranam2002/DeadMile-AI-.git
+cd DeadMile-AI-
 
-# Create environment file
+# Configure
 cp .env.example .env
-# Edit .env with your API keys
+# Edit .env — add FEATHERLESS_API_KEY and NEXT_PUBLIC_MAPBOX_TOKEN
 
-# Start everything
-make dev
+# Validate environment
+python scripts/validate_env.py
+
+# Launch everything (19 containers)
+make setup
+
+# This runs: docker compose --profile full up → seed data → train models → seed vectors
+# Takes ~3 minutes on first run
 ```
 
-### Service URLs
+### Load Data
+
+Synthetic load files are **not committed** (large hackathon dataset). Download from the hackathon Google Drive and place in:
+
+```
+data/text/   # loads_part_000.txt – loads_part_012.txt (13 files)
+data/pdf/    # broker_load_sheet_001.pdf – 012.pdf (12 files)
+```
+
+Then run `make seed` to ingest ~2,500+ loads.
+
+### Access
 
 | Service | URL |
 |---------|-----|
-| Frontend Dashboard | http://localhost:3000 |
-| API Gateway | http://localhost:8000/docs |
-| Agent Core (SSE) | http://localhost:8001 |
-| Nginx (unified) | http://localhost |
-| Grafana | http://localhost:3001 |
-| Prometheus | http://localhost:9090 |
-| Temporal UI | http://localhost:8080 |
-| Kafka UI | http://localhost:8090 |
-| MinIO Console | http://localhost:9001 |
+| **Dashboard** | http://localhost:3000 |
+| **API Docs** | http://localhost:8000/docs |
+| **Grafana** | http://localhost:3001 (admin / see `.env`) |
+| **Temporal UI** | http://localhost:8080 |
+| **Kafka UI** | http://localhost:8090 |
 
-### Seed Load Data
-
-Place your load files in `data/text/` and `data/pdf/`, then:
+### Dev Modes
 
 ```bash
-make seed
+make dev    # Light stack (~8 containers) — core services only
+make demo   # Full stack (19 containers) — for demos and judging
 ```
 
+## 🎬 Demo
+
+See **[DEMO.md](./DEMO.md)** for the complete 5-minute demo script with talking points, Q&A prep, and step-by-step walkthrough.
+
+## 🛠️ Tech Stack
+
+### AI & ML
+
+| Tech | Purpose |
+|------|---------|
+| LangGraph | Multi-step ReAct agent with 8 tools |
+| LiteLLM | Unified LLM interface with fallback |
+| Featherless AI | Llama 3.1 70B inference (hackathon sponsor) |
+| Tavily | Real-time fuel prices & market data (hackathon sponsor) |
+| Langfuse | LLM observability & tracing |
+| Mem0 | Persistent driver preference memory |
+| XGBoost | Lane rate prediction model |
+| scikit-learn | K-Means market clustering |
+| Sentence Transformers | Load commodity embeddings |
+| Qdrant | Semantic vector search |
+
+### Backend
+
+| Tech | Purpose |
+|------|---------|
+| FastAPI + Pydantic v2 | API gateway & microservices |
+| PostgreSQL + PostGIS | Geospatial load database |
+| TimescaleDB | Time-series rate history |
+| Apache Kafka | Real-time load ingestion pipeline |
+| Temporal | Durable workflow orchestration for load chains |
+| Redis | Caching layer |
+| MinIO | Document storage |
+
+### Frontend
+
+| Tech | Purpose |
+|------|---------|
+| Next.js 15 | React framework with App Router |
+| Deck.gl | GPU-accelerated map visualizations |
+| Mapbox GL | Base map tiles |
+| Tremor + Recharts | Dashboard charts |
+| Framer Motion | Animations |
+| Zustand | State management |
+| shadcn/ui | UI component library |
+| Web Speech API | Voice input |
+
+### Infrastructure
+
+| Tech | Purpose |
+|------|---------|
+| Docker Compose | 19-container orchestration |
+| Nginx | Reverse proxy + SSE support |
+| Prometheus | Metrics collection |
+| Grafana | Monitoring dashboards |
+
+## 🤖 Agent Tools
+
+The LangGraph agent has 8 specialized tools:
+
+| # | Tool | Purpose |
+|---|------|---------|
+| 1 | `search_loads` | PostGIS spatial search for nearby loads |
+| 2 | `calculate_profitability` | Full net P&L with all cost components |
+| 3 | `get_market_score` | Destination market quality (Hot→Dead) |
+| 4 | `predict_lane_rate` | XGBoost rate trend forecasting |
+| 5 | `find_load_chain` | Multi-hop route optimization (Temporal) |
+| 6 | `get_fuel_prices` | Tavily real-time diesel prices |
+| 7 | `semantic_load_search` | Qdrant vector search on commodities |
+| 8 | `get_driver_preferences` | Mem0 personalization memory |
+
+## 📊 Features
+
+### Smart Load Recommendation
+
+Full P&L breakdown for every load: revenue - fuel - driver pay - insurance - maintenance - tolls - fees - deadhead = **NET PROFIT**
+
+### Destination Market Intelligence
+
+Every US city scored 0-100 based on outbound load density, rates, and lane balance. The agent won't recommend a high-paying load to a dead market.
+
+### Multi-Hop Load Chaining
+
+Optimizes sequences of 2-5 loads for maximum weekly earnings. Uses beam search with Temporal workflows.
+
+### Rate Prediction
+
+XGBoost model predicts whether rates on a lane are rising, stable, or falling.
+
+### What-If Simulator
+
+Drag a pin anywhere on the US map — instantly see available loads, projected earnings, and market quality.
+
+### Voice Input
+
+"I'm in Houston with a reefer" — speak your query, get results.
+
+## 🏆 Buildathon 2026 — Statement 6
+
+This project addresses **Statement 6: Trucking Load Optimization Agent** from Buildathon Dallas 2026.
+
+**Sponsor integrations:** Featherless AI (LLM inference), Tavily (real-time search)
+
+## 📄 License
+
+MIT
+
 ---
 
-## Makefile Commands
-
-| Command | Description |
-|---------|-------------|
-| `make dev` | Build and start full stack |
-| `make build` | Build all Docker images |
-| `make up` | Start containers (detached) |
-| `make down` | Stop all containers |
-| `make seed` | Ingest load data from `data/` |
-| `make logs` | Tail all service logs |
-| `make logs-<service>` | Tail specific service logs |
-| `make health` | Check service health endpoints |
-| `make clean` | Remove containers and volumes |
-
----
-
-## Agent Tools
-
-The LangGraph agent has 8 tools for intelligent load optimization:
-
-1. **search_loads** — PostGIS spatial query for nearby loads
-2. **calculate_profitability** — Full net P&L with all cost components
-3. **get_market_score** — Outbound density, avg rates, lane balance
-4. **predict_lane_rate** — XGBoost forecast with confidence interval
-5. **find_load_chain** — Temporal workflow for multi-hop optimization
-6. **get_fuel_prices** — Tavily real-time diesel prices by state
-7. **semantic_load_search** — Qdrant natural language load search
-8. **get_driver_preferences** — Mem0 driver history and preferences
-
----
-
-## Project Structure
-
-```
-deadmile-ai/
-├── data/
-│   ├── text/                 # loads_part_000.txt – loads_part_012.txt
-│   └── pdf/                  # broker_load_sheet_001.pdf – broker_load_sheet_012.pdf
-```
-
-Place load files in `data/text/` and `data/pdf/` before running `make seed`.
-
----
-
-## License
-
-Proprietary — All rights reserved.
+<div align="center">
+Built with 💚 for Buildathon 2026 by Nithish Karanam
+</div>
