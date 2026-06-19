@@ -11,8 +11,6 @@ import type { ProfitBreakdown } from "@/lib/types";
 import { MapControls } from "./MapControls";
 import { getMapConfig, mapConfigErrorMessage } from "@/lib/map-config";
 
-const mapConfig = getMapConfig();
-
 function marketRgb(label: string): [number, number, number] {
   const l = label.toLowerCase();
   if (l.includes("hot")) return [16, 185, 129];
@@ -23,6 +21,7 @@ function marketRgb(label: string): [number, number, number] {
 }
 
 export function LoadMap() {
+  const mapConfig = getMapConfig();
   const driverLat = useAppStore((s) => s.driverLat);
   const driverLng = useAppStore((s) => s.driverLng);
   const recommendedLoads = useAppStore((s) => s.recommendedLoads);

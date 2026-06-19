@@ -16,7 +16,12 @@ class Settings(BaseSettings):
     market_intelligence_url: str = "http://market-intelligence:8005"
     temporal_address: str = "temporal:7233"
     temporal_task_queue: str = "load-chain-queue"
-    cors_origins: list[str] = ["http://localhost:3000", "http://frontend:3000", "http://localhost"]
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://localhost:8888",
+        "http://frontend:3000",
+        "http://localhost",
+    ]
 
 
 settings = Settings()

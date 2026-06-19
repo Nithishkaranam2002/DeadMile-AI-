@@ -70,17 +70,22 @@ class QdrantSeeder:
 
         from qdrant_client.models import PointStruct
 
-        points = []
-        for i, row in enumerate(rows):
-            text = (
-                f"{row['commodity']} {row['equipment']} from {row['origin_city']} {row['origin_state']} "
-                f"to {row['dest_city']} {row['dest_state']} {row['weight_lbs']} lbs"
-            )
-            vector = self.model.encode(text).tolist()
-            points.append(
+        batch_size = 500
+        total = 0
+        for start in range(0, len(rows), batch_size):
+            chunk = rows[start : start + batch_size]
+            texts = [
+                (
+                    f"{row['commodity']} {row['equipment']} from {row['origin_city']} {row['origin_state']} "
+                    f"to {row['dest_city']} {row['dest_state']} {row['weight_lbs']} lbs"
+                )
+                for row in chunk
+            ]
+            vectors = self.model.encode(texts, batch_size=64, show_progress_bar=False)
+            points = [
                 PointStruct(
-                    id=i + 1,
-                    vector=vector,
+                    id=start + i + 1,
+                    vector=vector.tolist(),
                     payload={
                         "load_id": row["load_id"],
                         "commodity": row["commodity"],
@@ -93,12 +98,14 @@ class QdrantSeeder:
                         "lng": float(row["lng"]) if row["lng"] else None,
                     },
                 )
-            )
-
-        if points:
+                for i, (row, vector) in enumerate(zip(chunk, vectors))
+            ]
             self.client.upsert(collection_name=self.collection_name, points=points)
-        logger.info("qdrant_seeded", points=len(points))
-        return len(points)
+            total += len(points)
+            logger.info("qdrant_batch_seeded", batch=len(points), total=total)
+
+        logger.info("qdrant_seeded", points=total)
+        return total
 
     async def search(
         self,

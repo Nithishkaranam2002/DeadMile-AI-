@@ -13,8 +13,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-deadmile}
       POSTGRES_USER: ${POSTGRES_USER:-deadmile}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-deadmile_secret_change_me}
-    ports:
-      - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./infrastructure/init-db:/docker-entrypoint-initdb.d:ro
@@ -32,8 +30,6 @@ services:
     container_name: deadmile-redis
     restart: unless-stopped
     command: redis-server --appendonly yes
-    ports:
-      - "6379:6379"
     volumes:
       - redis-data:/data
     networks:
@@ -48,15 +44,12 @@ services:
     image: qdrant/qdrant:v1.12.5
     container_name: deadmile-qdrant
     restart: unless-stopped
-    ports:
-      - "6333:6333"
-      - "6334:6334"
     volumes:
       - qdrant-data:/qdrant/storage
     networks:
       - deadmile-network
     healthcheck:
-      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333 && echo -e \"GET /readyz HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n\" >&3 && cat <&3 | grep -q ok'"]
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/6333 && echo -e \"GET /readyz HTTP/1.1\\r\\nHost: localhost\\r\\n\\r\\n\" >&3 && cat <&3 | grep -q \"all shards are ready\"'"]
       interval: 15s
       timeout: 10s
       retries: 5
@@ -71,9 +64,6 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-deadmile_minio}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-deadmile_minio_secret_change_me}
-    ports:
-      - "9000:9000"
-      - "9001:9001"
     volumes:
       - minio-data:/data
     networks:
@@ -95,11 +85,11 @@ services:
     networks:
       - deadmile-network
     healthcheck:
-      test: ["CMD-SHELL", "echo ruok | nc localhost 2181 | grep imok"]
+      test: ["CMD-SHELL", "echo srvr | nc -w 2 localhost 2181 | grep -q Mode"]
       interval: 15s
       timeout: 10s
-      retries: 5
-      start_period: 30s
+      retries: 8
+      start_period: 45s
 
   kafka:
     profiles: ["full"]
@@ -118,8 +108,6 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_LOG_RETENTION_HOURS: 168
-    ports:
-      - "9092:9092"
     volumes:
       - kafka-data:/var/lib/kafka/data
     networks:
@@ -171,15 +159,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-deadmile}
       POSTGRES_PWD: ${POSTGRES_PASSWORD:-deadmile_secret_change_me}
       POSTGRES_SEEDS: postgres
-      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development-sql.yaml
-    ports:
-      - "7233:7233"
-    volumes:
-      - temporal-data:/etc/temporal
     networks:
       - deadmile-network
     healthcheck:
-      test: ["CMD-SHELL", "tctl --address temporal:7233 cluster health 2>/dev/null | grep -q SERVING"]
+      test: ["CMD-SHELL", "tctl --address $$(hostname -i):7233 cluster health 2>/dev/null | grep -q SERVING"]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -197,7 +180,7 @@ services:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_CORS_ORIGINS: http://localhost:3000
     ports:
-      - "8080:8080"
+      - "8081:8080"
     networks:
       - deadmile-network
     healthcheck:
@@ -231,7 +214,7 @@ services:
       TEMPORAL_ADDRESS: temporal:7233
       TEMPORAL_TASK_QUEUE: load-chain-queue
     ports:
-      - "${API_GATEWAY_PORT:-8000}:8000"
+      - "${API_GATEWAY_PORT:-8010}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -419,12 +402,19 @@ services:
     build:
       context: .
       dockerfile: services/frontend/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8010
+        NEXT_PUBLIC_AGENT_URL: http://localhost:8001
+        NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN}
+        NEXT_PUBLIC_MAPTILER_KEY: ${NEXT_PUBLIC_MAPTILER_KEY:-}
+        NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-DeadMile AI}
     container_name: deadmile-frontend
     restart: unless-stopped
     env_file: .env
     environment:
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-      NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:-}
+      NEXT_PUBLIC_API_URL: http://localhost:8010
+      NEXT_PUBLIC_AGENT_URL: http://localhost:8001
+      NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN}
       NEXT_PUBLIC_MAPTILER_KEY: ${NEXT_PUBLIC_MAPTILER_KEY:-}
       NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-DeadMile AI}
     ports:
@@ -435,7 +425,7 @@ services:
     networks:
       - deadmile-network
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000 > /dev/null 2>&1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000 > /dev/null 2>&1"]
       interval: 15s
       timeout: 10s
       retries: 5
@@ -464,7 +454,7 @@ services:
     networks:
       - deadmile-network
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost/health > /dev/null 2>&1"]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health > /dev/null 2>&1"]
       interval: 15s
       timeout: 10s
       retries: 5
@@ -530,6 +520,5 @@ volumes:
   qdrant-data:
   minio-data:
   kafka-data:
-  temporal-data:
   grafana-data:
   prometheus-data:

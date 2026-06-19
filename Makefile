@@ -20,7 +20,7 @@ dev: ## Light mode — core services only (~8 containers)
 	$(COMPOSE) up --build -d
 	@echo "DeadMile AI (light mode) is starting."
 	@echo "  Frontend:    http://localhost:3000"
-	@echo "  API Gateway: http://localhost:8000/docs"
+	@echo "  API Gateway: http://localhost:8010/docs"
 	@echo "  For full demo: make demo"
 
 demo: ## Full mode — all 19 containers (for demos)
@@ -28,10 +28,10 @@ demo: ## Full mode — all 19 containers (for demos)
 	$(COMPOSE_FULL) up --build -d
 	@echo "DeadMile AI (full stack) is starting."
 	@echo "  Frontend:    http://localhost:3000"
-	@echo "  Nginx:       http://localhost"
-	@echo "  API Gateway: http://localhost:8000/docs"
+	@echo "  Nginx:       http://localhost:8888"
+	@echo "  API Gateway: http://localhost:8010/docs"
 	@echo "  Grafana:     http://localhost:3001"
-	@echo "  Temporal UI: http://localhost:8080"
+	@echo "  Temporal UI: http://localhost:8081"
 	@echo "  Kafka UI:    http://localhost:8090"
 
 build: ## Build all Docker images
@@ -54,9 +54,9 @@ setup: demo seed seed-vectors train-models ## Full first-time demo setup
 	@echo ""
 	@echo "DeadMile AI is ready!"
 	@echo "  Frontend: http://localhost:3000"
-	@echo "  API Docs: http://localhost:8000/docs"
+	@echo "  API Docs: http://localhost:8010/docs"
 	@echo "  Grafana:  http://localhost:3001"
-	@echo "  Temporal: http://localhost:8080"
+	@echo "  Temporal: http://localhost:8081"
 	@echo ""
 	@echo "See DEMO.md for the 5-minute walkthrough."
 

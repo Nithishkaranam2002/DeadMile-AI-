@@ -42,8 +42,13 @@ export function HeroLanding() {
   const [localDeadhead, setLocalDeadhead] = useState(250);
   const [suggestions, setSuggestions] = useState<ReturnType<typeof searchCities>>([]);
   const [submitting, setSubmitting] = useState(false);
+  const [motionReady, setMotionReady] = useState(false);
 
   const { setDriverLocation, setEquipment, setMaxDeadhead, dismissHero, triggerSearch } = useAppStore();
+
+  useEffect(() => {
+    setMotionReady(true);
+  }, []);
 
   useEffect(() => {
     getDashboardStats()
@@ -112,7 +117,7 @@ export function HeroLanding() {
 
       <div className="relative z-10 mx-auto flex max-w-4xl flex-col items-center px-4 py-12 text-center">
         <motion.div
-          initial={{ opacity: 0, y: 20 }}
+          initial={motionReady ? { opacity: 0, y: 20 } : false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
           className="mb-6 flex items-center gap-3"
@@ -124,7 +129,7 @@ export function HeroLanding() {
         </motion.div>
 
         <motion.h2
-          initial={{ opacity: 0 }}
+          initial={motionReady ? { opacity: 0 } : false}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.2 }}
           className="mb-2 text-2xl font-bold text-text-primary md:text-3xl"
@@ -133,7 +138,7 @@ export function HeroLanding() {
         </motion.h2>
 
         <motion.p
-          initial={{ opacity: 0 }}
+          initial={motionReady ? { opacity: 0 } : false}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.35 }}
           className="mb-10 max-w-xl text-text-secondary"
@@ -143,7 +148,7 @@ export function HeroLanding() {
         </motion.p>
 
         <motion.div
-          initial={{ opacity: 0, scale: 0.96 }}
+          initial={motionReady ? { opacity: 0, scale: 0.96 } : false}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.45 }}
           className="w-full max-w-lg rounded-xl border border-border bg-surface/90 p-6 shadow-2xl backdrop-blur"
@@ -220,7 +225,7 @@ export function HeroLanding() {
         </motion.div>
 
         <motion.div
-          initial={{ opacity: 0, y: 16 }}
+          initial={motionReady ? { opacity: 0, y: 16 } : false}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.6 }}
           className="mt-10 grid w-full max-w-2xl grid-cols-2 gap-4 md:grid-cols-4"
@@ -228,7 +233,7 @@ export function HeroLanding() {
           {statCards.map((card, i) => (
             <motion.div
               key={card.label}
-              initial={{ opacity: 0, y: 12 }}
+              initial={motionReady ? { opacity: 0, y: 12 } : false}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.7 + i * 0.1 }}
               className="rounded-lg border border-border bg-surface/80 p-4 backdrop-blur"
@@ -246,7 +251,7 @@ export function HeroLanding() {
         </motion.div>
 
         <motion.p
-          initial={{ opacity: 0 }}
+          initial={motionReady ? { opacity: 0 } : false}
           animate={{ opacity: 1 }}
           transition={{ delay: 1.1 }}
           className="mt-12 text-xs text-text-secondary"
