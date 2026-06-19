@@ -386,14 +386,16 @@ services:
 
   frontend:
     build:
-      context: ./services/frontend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: services/frontend/Dockerfile
     container_name: deadmile-frontend
     restart: unless-stopped
     env_file: .env
     environment:
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
       NEXT_PUBLIC_AGENT_URL: ${NEXT_PUBLIC_AGENT_URL:-http://localhost:8001}
+      NEXT_PUBLIC_MARKET_URL: ${NEXT_PUBLIC_MARKET_URL:-http://localhost:8005}
+      NEXT_PUBLIC_PROFIT_URL: ${NEXT_PUBLIC_PROFIT_URL:-http://localhost:8004}
       NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN:-}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"

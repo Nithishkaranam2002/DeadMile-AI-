@@ -3,13 +3,49 @@
 @tailwind utilities;
 
 :root {
-  --background: 222 47% 6%;
-  --foreground: 210 40% 98%;
-  --primary: 217 91% 60%;
-  --primary-foreground: 222 47% 6%;
-  --border: 217 33% 17%;
+  --background: #0a0a0f;
+  --surface: #12121a;
+  --surface-hover: #1a1a25;
+  --border: #2a2a35;
+  --primary: #22d3ee;
+  --accent: #10b981;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+}
+
+html {
+  color-scheme: dark;
 }
 
 body {
-  @apply bg-background text-foreground antialiased;
+  @apply bg-background text-text-primary antialiased;
+  min-height: 100vh;
+}
+
+.font-mono-num {
+  font-family: var(--font-jetbrains), monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.mapboxgl-popup-content {
+  background: #12121a !important;
+  color: #f8fafc !important;
+  border: 1px solid #2a2a35 !important;
+  border-radius: 8px !important;
+}
+
+.mapboxgl-popup-tip {
+  border-top-color: #12121a !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

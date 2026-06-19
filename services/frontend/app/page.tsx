@@ -1,32 +1,79 @@
-export default function HomePage() {
+"use client";
+
+import { useEffect } from "react";
+import { ChatPanel } from "@/components/chat/ChatPanel";
+import { LoadMapDynamic } from "@/components/map/LoadMapDynamic";
+import { LoadCard } from "@/components/loads/LoadCard";
+import { LoadChainView } from "@/components/loads/LoadChainView";
+import { LoadCompare } from "@/components/loads/LoadCompare";
+import { DashboardStats } from "@/components/stats/DashboardStats";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { getDashboardStats } from "@/lib/api";
+import { useAppStore } from "@/lib/store";
+
+export default function DashboardPage() {
+  const recommendedLoads = useAppStore((s) => s.recommendedLoads);
+  const loadChain = useAppStore((s) => s.loadChain);
+  const selectLoad = useAppStore((s) => s.selectLoad);
+  const setMapViewState = useAppStore((s) => s.setMapViewState);
+  const updateStats = useAppStore.setState;
+
+  useEffect(() => {
+    getDashboardStats().then((stats) => updateStats({ dashboardStats: stats, totalLoads: stats.total_loads }));
+  }, [updateStats]);
+
+  const handleShowMap = (load: (typeof recommendedLoads)[0]) => {
+    selectLoad(load);
+    if (load.origin_lat && load.origin_lng) {
+      setMapViewState({
+        latitude: load.origin_lat,
+        longitude: load.origin_lng,
+        zoom: 6,
+        pitch: 25,
+        bearing: 0,
+      });
+    }
+  };
+
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center p-8">
-      <div className="max-w-2xl text-center">
-        <h1 className="mb-4 text-5xl font-bold tracking-tight">
-          DeadMile <span className="text-blue-400">AI</span>
-        </h1>
-        <p className="mb-8 text-lg text-gray-400">
-          Intelligent Load Optimization for Small Trucking Carriers
-        </p>
-        <div className="grid grid-cols-2 gap-4 text-sm text-gray-500">
-          <div className="rounded-lg border border-gray-800 p-4">
-            <p className="font-medium text-gray-300">Smart Recommendations</p>
-            <p>True net profitability scoring</p>
+    <div className="flex h-[calc(100vh-5.5rem)] flex-col lg:flex-row">
+      <aside className="w-full shrink-0 lg:w-[400px] lg:border-r lg:border-border">
+        <div className="h-[45vh] lg:h-full">
+          <ChatPanel />
+        </div>
+      </aside>
+
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <div className="space-y-3 border-b border-border p-4">
+          <DashboardStats />
+        </div>
+
+        <div className="relative min-h-[300px] flex-1">
+          <ErrorBoundary fallbackTitle="Map failed to load">
+            <LoadMapDynamic />
+          </ErrorBoundary>
+        </div>
+
+        <div className="max-h-[40vh] overflow-y-auto border-t border-border p-4">
+          {recommendedLoads.length >= 2 && (
+            <div className="mb-4">
+              <ErrorBoundary fallbackTitle="Comparison chart failed">
+                <LoadCompare loads={recommendedLoads} />
+              </ErrorBoundary>
+            </div>
+          )}
+          <div className="mb-4 grid gap-4 lg:grid-cols-2">
+            {recommendedLoads.map((load, i) => (
+              <LoadCard key={load.load_id} load={load} rank={i + 1} onShowMap={handleShowMap} />
+            ))}
           </div>
-          <div className="rounded-lg border border-gray-800 p-4">
-            <p className="font-medium text-gray-300">Multi-Hop Chains</p>
-            <p>Maximize weekly earnings</p>
-          </div>
-          <div className="rounded-lg border border-gray-800 p-4">
-            <p className="font-medium text-gray-300">Market Intelligence</p>
-            <p>Destination market heatmaps</p>
-          </div>
-          <div className="rounded-lg border border-gray-800 p-4">
-            <p className="font-medium text-gray-300">AI Agent</p>
-            <p>8 tools, SSE streaming</p>
-          </div>
+          {loadChain && (
+            <div className="mt-4">
+              <LoadChainView chain={loadChain} />
+            </div>
+          )}
         </div>
       </div>
-    </main>
+    </div>
   );
 }
