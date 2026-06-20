@@ -27,7 +27,7 @@ function normalize(value: number, min: number, max: number): number {
 }
 
 export function LoadCompare({ loads }: LoadCompareProps) {
-  const compareLoads = loads.slice(0, 3);
+  const compareLoads = loads.filter((l) => typeof l.composite_score === "number").slice(0, 3);
   if (compareLoads.length < 2) return null;
 
   const radarData = useMemo(() => {

@@ -16,7 +16,7 @@ export function DashboardStats() {
         label="Best Market"
         value={`${stats.best_market} (${stats.best_market_score})`}
       />
-      <StatCard icon={<TrendingUp className="h-4 w-4" />} label="Avg Rate/Mi" value={`$${stats.avg_rate_per_mile.toFixed(2)}`} />
+      <StatCard icon={<TrendingUp className="h-4 w-4" />} label="Avg Rate/Mi" value={`$${(stats.avg_rate_per_mile ?? 0).toFixed(2)}`} />
     </div>
   );
 }

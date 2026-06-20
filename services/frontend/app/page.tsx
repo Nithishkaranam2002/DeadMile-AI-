@@ -17,6 +17,7 @@ export default function DashboardPage() {
   const showHero = useAppStore((s) => s.showHero);
   const recommendedLoads = useAppStore((s) => s.recommendedLoads);
   const loadChain = useAppStore((s) => s.loadChain);
+  const isStreaming = useAppStore((s) => s.isStreaming);
   const selectLoad = useAppStore((s) => s.selectLoad);
   const setMapViewState = useAppStore((s) => s.setMapViewState);
   const updateStats = useAppStore.setState;
@@ -75,18 +76,31 @@ export default function DashboardPage() {
             </div>
 
             <div className="max-h-[40vh] overflow-y-auto border-t border-border p-4">
-              {recommendedLoads.length >= 2 && (
-                <div className="mb-4">
-                  <ErrorBoundary fallbackTitle="Comparison chart failed">
-                    <LoadCompare loads={recommendedLoads} />
-                  </ErrorBoundary>
-                </div>
+              {recommendedLoads.length === 0 ? (
+                <p className="py-6 text-center text-sm text-text-secondary">
+                  {isStreaming
+                    ? "Calculating your best loads…"
+                    : "Search from the left panel to see ranked loads here."}
+                </p>
+              ) : (
+                <>
+                  <h3 className="mb-3 text-sm font-semibold text-text-secondary">
+                    Top loads by net profit
+                  </h3>
+                  {recommendedLoads.length >= 2 && (
+                    <div className="mb-4">
+                      <ErrorBoundary fallbackTitle="Comparison chart failed">
+                        <LoadCompare loads={recommendedLoads} />
+                      </ErrorBoundary>
+                    </div>
+                  )}
+                  <div className="mb-4 grid gap-4 lg:grid-cols-2">
+                    {recommendedLoads.map((load, i) => (
+                      <LoadCard key={load.load_id} load={load} rank={i + 1} onShowMap={handleShowMap} />
+                    ))}
+                  </div>
+                </>
               )}
-              <div className="mb-4 grid gap-4 lg:grid-cols-2">
-                {recommendedLoads.map((load, i) => (
-                  <LoadCard key={load.load_id} load={load} rank={i + 1} onShowMap={handleShowMap} />
-                ))}
-              </div>
               {loadChain && (
                 <div className="mt-4">
                   <LoadChainView chain={loadChain} />

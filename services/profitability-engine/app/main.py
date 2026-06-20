@@ -111,10 +111,12 @@ async def calculate_single(req: CalculateRequest) -> ProfitBreakdown:
     if not load:
         raise HTTPException(status_code=404, detail=f"Load {req.load_id} not found")
 
-    dest_score = await get_market_score(load.dest_city, load.dest_state)
+    dest_city = load.dest_city.strip()
+    dest_state = load.dest_state.strip().upper()
+    dest_score = await get_market_score(dest_city, dest_state)
     pool = await get_pool()
     deadhead_from = await estimate_post_delivery_deadhead(
-        load.dest_city, load.dest_state, load.equipment, pool
+        dest_city, dest_state, load.equipment, pool
     )
 
     breakdown = calculator.calculate(

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import Map, { NavigationControl } from "react-map-gl";
 import { DeckGL } from "@deck.gl/react";
 import { ArcLayer, LineLayer, ScatterplotLayer } from "@deck.gl/layers";
@@ -8,6 +8,7 @@ import { HexagonLayer } from "@deck.gl/aggregation-layers";
 import "mapbox-gl/dist/mapbox-gl.css";
 import { useAppStore } from "@/lib/store";
 import type { ProfitBreakdown } from "@/lib/types";
+import { viewStateForLoads } from "@/lib/map-bounds";
 import { MapControls } from "./MapControls";
 import { getMapConfig, mapConfigErrorMessage } from "@/lib/map-config";
 
@@ -33,6 +34,28 @@ export function LoadMap() {
   const setMapViewState = useAppStore((s) => s.setMapViewState);
   const selectLoad = useAppStore((s) => s.selectLoad);
   const topMarkets = useAppStore((s) => s.topMarkets);
+  const lastFitKey = useRef("");
+
+  const loadPoints = useMemo(
+    () => recommendedLoads.filter((l) => l.origin_lat && l.origin_lng),
+    [recommendedLoads]
+  );
+
+  useEffect(() => {
+    const key = recommendedLoads.map((l) => l.load_id).join(",");
+    if (!key || key === lastFitKey.current) return;
+
+    const withCoords = recommendedLoads.filter(
+      (l) => (l.origin_lat && l.origin_lng) || (l.dest_lat && l.dest_lng)
+    );
+    if (withCoords.length === 0) return;
+
+    const next = viewStateForLoads(withCoords, driverLat, driverLng);
+    if (next) {
+      lastFitKey.current = key;
+      setMapViewState(next);
+    }
+  }, [recommendedLoads, driverLat, driverLng, setMapViewState]);
 
   const layers = useMemo(() => {
     const result = [];
@@ -52,7 +75,6 @@ export function LoadMap() {
       })
     );
 
-    const loadPoints = recommendedLoads.filter((l) => l.origin_lat && l.origin_lng);
     if (loadPoints.length) {
       result.push(
         new ScatterplotLayer({
@@ -73,11 +95,15 @@ export function LoadMap() {
           id: "load-dests",
           data: loadPoints.filter((l) => l.dest_lat && l.dest_lng),
           getPosition: (l: ProfitBreakdown) => [l.dest_lng!, l.dest_lat!] as [number, number],
-          getFillColor: (l: ProfitBreakdown): [number, number, number, number] => [...marketRgb(l.destination_market_label), 200],
+          getFillColor: (l: ProfitBreakdown): [number, number, number, number] => [
+            ...marketRgb(l.destination_market_label),
+            200,
+          ],
           getRadius: 6000,
           radiusMinPixels: 5,
           radiusMaxPixels: 10,
           pickable: true,
+          onClick: (info) => selectLoad(info.object as ProfitBreakdown),
         })
       );
     }
@@ -86,27 +112,61 @@ export function LoadMap() {
       result.push(
         new ArcLayer({
           id: "arcs",
-          data: loadPoints.slice(0, 10),
-          getSourcePosition: () => [dLng, dLat],
-          getTargetPosition: (l: ProfitBreakdown) => [l.origin_lng!, l.origin_lat!] as [number, number],
-          getSourceColor: [34, 211, 238, 180],
-          getTargetColor: [16, 185, 129, 180],
+          data: loadPoints.filter((l) => l.dest_lat && l.dest_lng).slice(0, 10),
+          getSourcePosition: (l: ProfitBreakdown) => [l.origin_lng!, l.origin_lat!] as [number, number],
+          getTargetPosition: (l: ProfitBreakdown) => [l.dest_lng!, l.dest_lat!] as [number, number],
+          getSourceColor: [16, 185, 129, 200],
+          getTargetColor: (l: ProfitBreakdown): [number, number, number, number] => [
+            ...marketRgb(l.destination_market_label),
+            220,
+          ],
           getWidth: 2,
         })
       );
     }
 
-    if (showRoutes && selectedLoad?.origin_lat && selectedLoad.origin_lng) {
-      const route = [
-        { path: [[dLng, dLat], [selectedLoad.origin_lng!, selectedLoad.origin_lat!], [selectedLoad.dest_lng!, selectedLoad.dest_lat!]] },
-      ];
+    if (showRoutes && loadPoints.length) {
+      const routes = loadPoints
+        .filter((l) => l.dest_lat && l.dest_lng)
+        .slice(0, 10)
+        .map((l) => ({
+          path: [
+            [dLng, dLat],
+            [l.origin_lng!, l.origin_lat!],
+            [l.dest_lng!, l.dest_lat!],
+          ] as [number, number][],
+          load_id: l.load_id,
+        }));
+
+      if (routes.length) {
+        result.push(
+          new LineLayer({
+            id: "recommended-routes",
+            data: routes,
+            getPath: (d: { path: [number, number][] }) => d.path,
+            getColor: [34, 211, 238, 160],
+            getWidth: 2,
+          })
+        );
+      }
+    }
+
+    if (showRoutes && selectedLoad?.origin_lat && selectedLoad.origin_lng && selectedLoad.dest_lat && selectedLoad.dest_lng) {
       result.push(
         new LineLayer({
-          id: "route",
-          data: route,
+          id: "selected-route",
+          data: [
+            {
+              path: [
+                [dLng, dLat],
+                [selectedLoad.origin_lng!, selectedLoad.origin_lat!],
+                [selectedLoad.dest_lng!, selectedLoad.dest_lat!],
+              ],
+            },
+          ],
           getPath: (d: { path: [number, number][] }) => d.path,
-          getColor: [34, 211, 238, 220],
-          getWidth: 3,
+          getColor: [34, 211, 238, 240],
+          getWidth: 4,
         })
       );
     }
@@ -133,7 +193,7 @@ export function LoadMap() {
     }
 
     return result;
-  }, [driverLat, driverLng, recommendedLoads, selectedLoad, showArcs, showRoutes, showHeatmap, topMarkets, selectLoad]);
+  }, [driverLat, driverLng, loadPoints, selectedLoad, showArcs, showRoutes, showHeatmap, topMarkets, selectLoad]);
 
   if (!mapConfig) {
     return (

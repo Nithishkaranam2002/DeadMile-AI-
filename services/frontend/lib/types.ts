@@ -30,6 +30,8 @@ export interface ProfitBreakdown {
   composite_score: number;
   destination_market_score?: number;
   destination_market_label: string;
+  dest_city?: string;
+  dest_state?: string;
   equipment: string;
   commodity: string;
   origin: string;
@@ -41,6 +43,9 @@ export interface ProfitBreakdown {
   origin_lng?: number;
   dest_lat?: number;
   dest_lng?: number;
+  /** Present on partial search results before profitability calc */
+  rate?: number;
+  miles?: number;
 }
 
 export interface Load {

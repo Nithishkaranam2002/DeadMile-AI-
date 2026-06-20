@@ -3,13 +3,42 @@
 import { useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import type { AgentEvent } from "@/lib/types";
+import { friendlyToolLabel } from "@/lib/agent-response";
+import { getLoadById } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 import type { ProfitBreakdown, LoadChain } from "@/lib/types";
-import { LoadCard } from "@/components/loads/LoadCard";
-import { LoadChainView } from "@/components/loads/LoadChainView";
+import { AgentSummary } from "./AgentSummary";
+import { AgentStatusBar } from "./AgentStatusBar";
 
 interface AgentStreamProps {
   events: AgentEvent[];
+}
+
+function mergeRecommendedLoad(load: ProfitBreakdown): ProfitBreakdown[] {
+  const current = useAppStore.getState().recommendedLoads;
+  const merged = [...current.filter((l) => l.load_id !== load.load_id), load];
+  merged.sort((a, b) => (b.net_profit ?? 0) - (a.net_profit ?? 0));
+  return merged.slice(0, 5);
+}
+
+async function enrichAndMergeLoad(load: ProfitBreakdown): Promise<ProfitBreakdown> {
+  if (load.origin_lat && load.dest_lat && load.dest_city) return load;
+
+  try {
+    const detail = await getLoadById(load.load_id);
+    const [destCity, destState] = (detail.destination || ",").split(",").map((s) => s.trim());
+    return {
+      ...load,
+      origin_lat: load.origin_lat ?? detail.origin_lat,
+      origin_lng: load.origin_lng ?? detail.origin_lng,
+      dest_lat: load.dest_lat ?? detail.dest_lat,
+      dest_lng: load.dest_lng ?? detail.dest_lng,
+      dest_city: load.dest_city ?? destCity,
+      dest_state: load.dest_state ?? destState,
+    };
+  } catch {
+    return load;
+  }
 }
 
 export function AgentStream({ events }: AgentStreamProps) {
@@ -18,6 +47,7 @@ export function AgentStream({ events }: AgentStreamProps) {
   const setRecommendedLoads = useAppStore((s) => s.setRecommendedLoads);
   const setLoadChain = useAppStore((s) => s.setLoadChain);
   const setAgentStatus = useAppStore((s) => s.setAgentStatus);
+  const setAgentActivity = useAppStore((s) => s.setAgentActivity);
   const processedRef = useRef(0);
 
   useEffect(() => {
@@ -25,64 +55,42 @@ export function AgentStream({ events }: AgentStreamProps) {
     processedRef.current = events.length;
 
     for (const event of newEvents) {
-      const id = `${Date.now()}-${Math.random()}`;
-
       switch (event.type) {
         case "thinking":
-          addMessage({
-            id,
-            type: "thinking",
-            content: String(event.data.message || "Thinking..."),
-            timestamp: Date.now(),
-          });
           setAgentStatus("thinking");
+          setAgentActivity(String(event.data.message || "Finding your best loads…"));
           break;
-        case "tool_call":
-          addMessage({
-            id,
-            type: "tool_call",
-            content: `🔧 ${event.data.tool || "tool"}: ${JSON.stringify(event.data.params || event.data).slice(0, 120)}`,
-            timestamp: Date.now(),
-          });
+        case "tool_call": {
+          const tool = String(event.data.tool || "");
+          setAgentActivity(friendlyToolLabel(tool));
           break;
+        }
         case "tool_result":
-          addMessage({
-            id,
-            type: "tool_result",
-            content: `✅ ${event.data.tool || "Done"}: ${event.data.count !== undefined ? `Found ${event.data.count}` : event.data.summary || "Complete"}`,
-            timestamp: Date.now(),
-          });
           break;
         case "load_found": {
           const load = (event.data.load || event.data) as ProfitBreakdown;
-          addMessage({ id, type: "load_card", content: load.load_id, load, timestamp: Date.now() });
-          const current = useAppStore.getState().recommendedLoads;
-          if (!current.some((l) => l.load_id === load.load_id)) {
-            setRecommendedLoads([...current, load]);
+          if (typeof load.net_profit === "number" && typeof load.composite_score === "number") {
+            void enrichAndMergeLoad(load).then((enriched) => {
+              setRecommendedLoads(mergeRecommendedLoad(enriched));
+            });
           }
           break;
         }
         case "chain_found": {
           const chain = event.data.chain as LoadChain;
           if (chain?.hops) {
-            addMessage({ id, type: "chain_view", content: "Load chain found", chain, timestamp: Date.now() });
             setLoadChain(chain);
           }
           break;
         }
         case "response":
-          addMessage({
-            id,
-            type: "agent",
-            content: String(event.data.text || event.data.response || ""),
-            timestamp: Date.now(),
-          });
           break;
         case "done":
           setAgentStatus("ready");
+          setAgentActivity(null);
           if (event.data.response) {
             addMessage({
-              id,
+              id: `agent-${Date.now()}`,
               type: "agent",
               content: String(event.data.response),
               timestamp: Date.now(),
@@ -91,16 +99,17 @@ export function AgentStream({ events }: AgentStreamProps) {
           break;
         case "error":
           setAgentStatus("error");
+          setAgentActivity(null);
           addMessage({
-            id,
+            id: `error-${Date.now()}`,
             type: "agent",
-            content: `Error: ${event.data.message}`,
+            content: `Something went wrong: ${event.data.message}. Try again or check your connection.`,
             timestamp: Date.now(),
           });
           break;
       }
     }
-  }, [events, addMessage, setRecommendedLoads, setLoadChain, setAgentStatus]);
+  }, [events, addMessage, setRecommendedLoads, setLoadChain, setAgentStatus, setAgentActivity]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -112,30 +121,36 @@ export function AgentStream({ events }: AgentStreamProps) {
 export function ChatMessageList() {
   const messages = useAppStore((s) => s.messages);
 
+  const visible = messages.filter(
+    (msg) => msg.type === "user" || msg.type === "agent"
+  );
+
   return (
     <div className="space-y-3">
-      {messages.map((msg) => (
+      {visible.length === 0 && (
+        <p className="rounded-lg border border-dashed border-border px-3 py-4 text-center text-xs text-text-secondary">
+          Set your location and equipment, then search. Your ranked loads appear on the map →
+        </p>
+      )}
+      {visible.map((msg) => (
         <motion.div
           key={msg.id}
           initial={{ opacity: 0, y: 6 }}
           animate={{ opacity: 1, y: 0 }}
           className={
             msg.type === "user"
-              ? "ml-4 rounded-lg bg-primary/10 p-3 text-sm"
-              : msg.type === "thinking" || msg.type === "tool_call" || msg.type === "tool_result"
-                ? "text-xs italic text-text-secondary"
-                : "rounded-lg bg-surface-hover p-3 text-sm"
+              ? "ml-6 rounded-lg bg-primary/10 px-3 py-2.5 text-sm"
+              : "rounded-lg border border-border/60 bg-surface-hover px-3 py-3 text-sm"
           }
         >
-          {msg.type === "load_card" && msg.load ? (
-            <LoadCard load={msg.load} compact />
-          ) : msg.type === "chain_view" && msg.chain ? (
-            <LoadChainView chain={msg.chain} />
+          {msg.type === "user" ? (
+            <div>{msg.content}</div>
           ) : (
-            <div className="whitespace-pre-wrap">{msg.content}</div>
+            <AgentSummary content={msg.content} />
           )}
         </motion.div>
       ))}
+      <AgentStatusBar />
     </div>
   );
 }

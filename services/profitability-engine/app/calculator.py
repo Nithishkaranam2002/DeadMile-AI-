@@ -143,6 +143,9 @@ class ProfitabilityCalculator:
     ) -> ProfitBreakdown:
         fuel_price = fuel_price_override or self.settings.fuel_price_per_gallon
 
+        dest_city = load.dest_city.strip()
+        dest_state = load.dest_state.strip().upper()
+
         pickup_lat = load.origin_lat or driver_lat
         pickup_lng = load.origin_lng or driver_lng
         dest_lat = load.dest_lat or pickup_lat
@@ -154,8 +157,8 @@ class ProfitabilityCalculator:
         deadhead_from = deadhead_from_delivery
         if deadhead_from is None:
             deadhead_from = self.estimate_deadhead_from_delivery(
-                load.dest_city,
-                load.dest_state,
+                dest_city,
+                dest_state,
                 dest_lat,
                 dest_lng,
                 load.equipment,
@@ -221,10 +224,16 @@ class ProfitabilityCalculator:
             composite_score=0.0,
             destination_market_score=destination_market_score,
             destination_market_label=market_label,
+            dest_city=dest_city,
+            dest_state=dest_state,
+            origin_lat=load.origin_lat,
+            origin_lng=load.origin_lng,
+            dest_lat=load.dest_lat,
+            dest_lng=load.dest_lng,
             equipment=load.equipment,
             commodity=load.commodity,
             origin=f"{load.origin_city}, {load.origin_state}",
-            destination=f"{load.dest_city}, {load.dest_state}",
+            destination=f"{dest_city}, {dest_state}",
             pickup_window=_format_window(load.pickup_start, load.pickup_end),
             delivery_window=_format_window(load.delivery_start, load.delivery_end),
             requirements=load.requirements,

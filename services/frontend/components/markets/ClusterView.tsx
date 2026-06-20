@@ -49,7 +49,8 @@ export function ClusterView() {
       });
     if (!showHeatmap) toggleHeatmap();
     setTopMarkets(MOCK_MARKETS);
-  }, [setTopMarkets, showHeatmap, toggleHeatmap]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setTopMarkets]);
 
   const uniqueClusters = [...new Set(clusters.map((c) => c.cluster_label))];
 

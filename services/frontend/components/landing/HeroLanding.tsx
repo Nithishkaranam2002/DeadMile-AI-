@@ -11,7 +11,7 @@ import type { DashboardStats } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
+import { DeadheadControl } from "@/components/DeadheadControl";
 
 function AnimatedNumber({
   value,
@@ -70,7 +70,8 @@ export function HeroLanding() {
     setMaxDeadhead(localDeadhead);
     dismissHero();
     triggerSearch(
-      `Find the best ${localEquipment} loads near ${match.city}, ${match.state} within ${localDeadhead} miles. Rank by net profit.`
+      `Find the best ${localEquipment} loads near ${match.city}, ${match.state} within ${localDeadhead} miles. Rank by net profit.`,
+      `Best ${localEquipment} near ${match.city}, ${match.state} · ${localDeadhead} mi deadhead`
     );
   };
 
@@ -187,7 +188,7 @@ export function HeroLanding() {
               <label className="mb-1 block text-xs text-text-secondary">🚛 Equipment?</label>
               <Select value={localEquipment} onValueChange={setLocalEquipment}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Dry Van" />
                 </SelectTrigger>
                 <SelectContent>
                   {["Dry Van", "Flatbed", "Reefer", "Step Deck"].map((e) => (
@@ -199,18 +200,7 @@ export function HeroLanding() {
               </Select>
             </div>
 
-            <div>
-              <label className="mb-1 block text-xs text-text-secondary">
-                📏 Max deadhead? {localDeadhead} mi
-              </label>
-              <Slider
-                value={[localDeadhead]}
-                min={50}
-                max={500}
-                step={10}
-                onValueChange={([v]) => setLocalDeadhead(v)}
-              />
-            </div>
+            <DeadheadControl value={localDeadhead} onChange={setLocalDeadhead} />
 
             <Button
               className="w-full gap-2 bg-gradient-to-r from-primary to-accent text-background hover:opacity-90"
@@ -249,20 +239,6 @@ export function HeroLanding() {
             </motion.div>
           ))}
         </motion.div>
-
-        <motion.p
-          initial={motionReady ? { opacity: 0 } : false}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 1.1 }}
-          className="mt-12 text-xs text-text-secondary"
-        >
-          Powered by:{" "}
-          <span className="text-primary">OpenAI</span> ·{" "}
-          <span className="text-primary">Tavily</span> ·{" "}
-          <span className="text-primary">LangGraph</span>
-          <br />
-          Built for <span className="text-accent">Buildathon 2026</span> — Statement 6
-        </motion.p>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { Maximize2 } from "lucide-react";
 import { useAppStore } from "@/lib/store";
+import { viewStateForLoads } from "@/lib/map-bounds";
 import { Button } from "@/components/ui/button";
 
 export function MapControls() {
@@ -17,6 +18,11 @@ export function MapControls() {
   const setMapViewState = useAppStore((s) => s.setMapViewState);
 
   const zoomToFit = () => {
+    const next = viewStateForLoads(recommendedLoads, driverLat, driverLng);
+    if (next) {
+      setMapViewState(next);
+      return;
+    }
     if (recommendedLoads.length && recommendedLoads[0].origin_lat) {
       setMapViewState({
         latitude: recommendedLoads[0].origin_lat!,

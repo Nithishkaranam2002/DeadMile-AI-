@@ -18,7 +18,15 @@ interface LoadCardProps {
 
 export function LoadCard({ load, rank, compact = false, onShowMap }: LoadCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const profitPositive = load.net_profit >= 0;
+  const netProfit = load.net_profit ?? 0;
+  const profitPositive = netProfit >= 0;
+  const compositeScore = load.composite_score ?? 0;
+  const profitMargin = load.profit_margin_percent ?? 0;
+  const deadhead = load.deadhead_to_pickup ?? 0;
+  const marketLabel = load.destination_market_label || "Neutral";
+  const destCity = load.dest_city?.trim() || load.destination?.split(",")[0]?.trim() || "Unknown";
+  const destState = load.dest_state?.trim() || load.destination?.split(",")[1]?.trim() || "";
+  const marketLocation = destState ? `${destCity}, ${destState}` : destCity;
 
   if (compact) {
     return (
@@ -32,7 +40,9 @@ export function LoadCard({ load, rank, compact = false, onShowMap }: LoadCardPro
           {load.origin} → {load.destination}
         </div>
         <div className={`font-mono-num font-bold ${profitPositive ? "text-accent" : "text-danger"}`}>
-          {formatCurrency(load.net_profit)} net
+          {load.net_profit != null
+            ? `${formatCurrency(netProfit)} net`
+            : `${formatCurrency(load.gross_rate ?? load.rate ?? 0)} gross`}
         </div>
       </motion.div>
     );
@@ -54,7 +64,7 @@ export function LoadCard({ load, rank, compact = false, onShowMap }: LoadCardPro
             <Badge variant="outline">{load.equipment}</Badge>
           </div>
           <div className="font-mono-num text-sm font-bold text-primary">
-            Score: {load.composite_score.toFixed(0)}/100
+            Score: {compositeScore.toFixed(0)}/100
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -62,31 +72,31 @@ export function LoadCard({ load, rank, compact = false, onShowMap }: LoadCardPro
             <CardTitle className="text-base">
               {load.origin} → {load.destination}
             </CardTitle>
-            <p className="text-sm text-text-secondary">{load.loaded_miles} mi · {load.commodity}</p>
+            <p className="text-sm text-text-secondary">{load.loaded_miles ?? load.miles ?? 0} mi · {load.commodity || "General freight"}</p>
           </div>
 
           <div className="grid grid-cols-3 gap-2 text-center">
             <div className="rounded-md bg-surface-hover p-2">
               <div className="text-xs text-text-secondary">GROSS</div>
-              <div className="font-mono-num font-bold">{formatCurrency(load.gross_rate)}</div>
+              <div className="font-mono-num font-bold">{formatCurrency(load.gross_rate ?? load.rate ?? 0)}</div>
             </div>
             <div className="rounded-md bg-surface-hover p-2">
               <div className="text-xs text-text-secondary">COSTS</div>
-              <div className="font-mono-num font-bold text-danger">{formatCurrency(load.total_costs)}</div>
+              <div className="font-mono-num font-bold text-danger">{formatCurrency(load.total_costs ?? 0)}</div>
             </div>
             <div className="rounded-md bg-surface-hover p-2">
               <div className="text-xs text-text-secondary">NET PROFIT</div>
               <div className={`font-mono-num text-lg font-bold ${profitPositive ? "text-accent" : "text-danger"}`}>
-                {formatCurrency(load.net_profit)}
+                {formatCurrency(netProfit)}
               </div>
-              <div className="text-xs text-text-secondary">{load.profit_margin_percent.toFixed(1)}%</div>
+              <div className="text-xs text-text-secondary">{profitMargin.toFixed(1)}%</div>
             </div>
           </div>
 
           <div className="flex flex-wrap gap-3 text-xs text-text-secondary">
-            <span>Deadhead: {load.deadhead_to_pickup.toFixed(0)}mi</span>
-            <span className={marketColor(load.destination_market_label)}>
-              {marketEmoji(load.destination_market_label)} {load.destination.split(",")[0]} · {load.destination_market_label}
+            <span>Deadhead: {deadhead.toFixed(0)}mi</span>
+            <span className={marketColor(marketLabel)}>
+              {marketEmoji(marketLabel)} {marketLocation} · {marketLabel}
             </span>
             {load.pickup_window && <span>PU: {load.pickup_window}</span>}
           </div>

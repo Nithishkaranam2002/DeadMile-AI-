@@ -12,6 +12,7 @@ interface AppStore {
   messages: ChatMessage[];
   isStreaming: boolean;
   agentStatus: "ready" | "thinking" | "error";
+  agentActivity: string | null;
   selectedLoad: ProfitBreakdown | null;
   recommendedLoads: ProfitBreakdown[];
   loadChain: LoadChain | null;
@@ -24,7 +25,7 @@ interface AppStore {
   totalLoads: number;
   dashboardStats: typeof MOCK_STATS;
   showHero: boolean;
-  searchRequest: { message: string; id: number } | null;
+  searchRequest: { message: string; displayMessage?: string; id: number } | null;
 
   setDriverLocation: (lat: number, lng: number, city: string, state: string) => void;
   setEquipment: (equipment: string) => void;
@@ -34,6 +35,7 @@ interface AppStore {
   setMessages: (messages: ChatMessage[]) => void;
   setIsStreaming: (v: boolean) => void;
   setAgentStatus: (s: "ready" | "thinking" | "error") => void;
+  setAgentActivity: (msg: string | null) => void;
   setRecommendedLoads: (loads: ProfitBreakdown[]) => void;
   selectLoad: (load: ProfitBreakdown | null) => void;
   setLoadChain: (chain: LoadChain | null) => void;
@@ -44,7 +46,7 @@ interface AppStore {
   setTopMarkets: (markets: MarketScore[]) => void;
   setConnected: (v: boolean) => void;
   dismissHero: () => void;
-  triggerSearch: (message: string) => void;
+  triggerSearch: (message: string, displayMessage?: string) => void;
   clearSearchRequest: () => void;
 }
 
@@ -58,6 +60,7 @@ export const useAppStore = create<AppStore>((set) => ({
   messages: [],
   isStreaming: false,
   agentStatus: "ready",
+  agentActivity: null,
   selectedLoad: null,
   recommendedLoads: [],
   loadChain: null,
@@ -86,6 +89,7 @@ export const useAppStore = create<AppStore>((set) => ({
   setMessages: (messages) => set({ messages }),
   setIsStreaming: (isStreaming) => set({ isStreaming }),
   setAgentStatus: (agentStatus) => set({ agentStatus }),
+  setAgentActivity: (agentActivity) => set({ agentActivity }),
   setRecommendedLoads: (recommendedLoads) => set({ recommendedLoads }),
   selectLoad: (selectedLoad) => set({ selectedLoad }),
   setLoadChain: (loadChain) => set({ loadChain }),
@@ -96,6 +100,7 @@ export const useAppStore = create<AppStore>((set) => ({
   setTopMarkets: (topMarkets) => set({ topMarkets }),
   setConnected: (connected) => set({ connected }),
   dismissHero: () => set({ showHero: false }),
-  triggerSearch: (message) => set({ searchRequest: { message, id: Date.now() } }),
+  triggerSearch: (message, displayMessage) =>
+    set({ searchRequest: { message, displayMessage, id: Date.now() } }),
   clearSearchRequest: () => set({ searchRequest: null }),
 }));

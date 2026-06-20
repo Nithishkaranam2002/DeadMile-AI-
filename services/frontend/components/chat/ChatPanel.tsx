@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bot, Send } from "lucide-react";
-import { streamChat, calculateBatch } from "@/lib/api";
+import { streamChat } from "@/lib/api";
 import { searchCities } from "@/lib/cities";
 import { useAppStore } from "@/lib/store";
 import type { AgentEvent } from "@/lib/types";
@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
+import { DeadheadControl } from "@/components/DeadheadControl";
 import { Separator } from "@/components/ui/separator";
 import { AgentStream, ChatMessageList } from "./AgentStream";
 import { VoiceInput } from "./VoiceInput";
@@ -38,9 +38,12 @@ export function ChatPanel() {
     setIsStreaming,
     setAgentStatus,
     setRecommendedLoads,
+    setLoadChain,
     setConnected,
     clearSearchRequest,
     setMapViewState,
+    setMessages,
+    setAgentActivity,
   } = useAppStore();
 
   const handleCityChange = (value: string) => {
@@ -55,13 +58,23 @@ export function ChatPanel() {
   };
 
   const sendMessage = useCallback(
-    async (overrideMessage?: string) => {
+    async (overrideMessage?: string, displayMessage?: string) => {
       const message = (overrideMessage ?? input).trim();
       if (!message || isStreaming) return;
       if (!overrideMessage) setInput("");
-      addMessage({ id: Date.now().toString(), type: "user", content: message, timestamp: Date.now() });
+
+      setMessages([]);
+      setRecommendedLoads([]);
+      setLoadChain(null);
+      addMessage({
+        id: Date.now().toString(),
+        type: "user",
+        content: displayMessage ?? message,
+        timestamp: Date.now(),
+      });
       setIsStreaming(true);
       setAgentStatus("thinking");
+      setAgentActivity("Finding your best loads…");
       setEvents([]);
 
       const lat = driverLat ?? 32.7767;
@@ -79,14 +92,7 @@ export function ChatPanel() {
         (event) => setEvents((prev) => [...prev, event]),
         { equipment, maxDeadhead }
       );
-
-      try {
-        const loads = await calculateBatch(lat, lng, equipment, 5);
-        if (loads.length) setRecommendedLoads(loads);
-        setConnected(true);
-      } catch {
-        setConnected(false);
-      }
+      setConnected(true);
     },
     [
       input,
@@ -98,7 +104,10 @@ export function ChatPanel() {
       addMessage,
       setIsStreaming,
       setAgentStatus,
+      setAgentActivity,
       setRecommendedLoads,
+      setLoadChain,
+      setMessages,
       setConnected,
       setMapViewState,
     ]
@@ -106,7 +115,7 @@ export function ChatPanel() {
 
   useEffect(() => {
     if (searchRequest?.message) {
-      void sendMessage(searchRequest.message);
+      void sendMessage(searchRequest.message, searchRequest.displayMessage);
       clearSearchRequest();
     }
   }, [searchRequest, sendMessage, clearSearchRequest]);
@@ -125,7 +134,9 @@ export function ChatPanel() {
           <Bot className="h-5 w-5 text-primary" />
           <h2 className="font-bold">DeadMile AI</h2>
         </div>
-        <p className="text-xs text-text-secondary">Your Load Copilot</p>
+        <p className="text-xs text-text-secondary">
+          Ask here — ranked loads show on the map →
+        </p>
       </div>
 
       <div className="space-y-3 border-b border-border p-4">
@@ -160,17 +171,11 @@ export function ChatPanel() {
             ))}
           </SelectContent>
         </Select>
-        <div>
-          <label className="text-xs text-text-secondary">Max Deadhead: {maxDeadhead} mi</label>
-          <Slider
-            value={[maxDeadhead]}
-            min={50}
-            max={500}
-            step={10}
-            onValueChange={([v]) => setMaxDeadhead(v)}
-            className="mt-2"
-          />
-        </div>
+        <DeadheadControl
+          value={maxDeadhead}
+          onChange={setMaxDeadhead}
+          label={`📏 Max deadhead? ${maxDeadhead} mi`}
+        />
       </div>
 
       <ScrollArea className="flex-1 p-4">

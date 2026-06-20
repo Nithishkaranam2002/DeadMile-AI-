@@ -6,38 +6,25 @@ import { MarketHeatmap } from "@/components/markets/MarketHeatmap";
 import { MarketDetailCard } from "@/components/markets/MarketDetailCard";
 import { ClusterView } from "@/components/markets/ClusterView";
 import { getMarketDetails } from "@/lib/api";
-import { MOCK_MARKETS } from "@/lib/mock-data";
 import type { MarketDetail, MarketScore } from "@/lib/types";
 import { useAppStore } from "@/lib/store";
 
-const MOCK_DETAIL: MarketDetail = {
-  ...MOCK_MARKETS[0],
-  top_lanes: [
-    { destination: "Charlotte, NC", avg_rate: 2.52, load_count: 34 },
-    { destination: "Miami, FL", avg_rate: 2.48, load_count: 28 },
-    { destination: "Nashville, TN", avg_rate: 2.41, load_count: 22 },
-    { destination: "Jacksonville, FL", avg_rate: 2.38, load_count: 19 },
-    { destination: "Birmingham, AL", avg_rate: 2.35, load_count: 15 },
-  ],
-  rate_history: [
-    { date: "Mar", rate: 2.28 },
-    { date: "Apr", rate: 2.31 },
-    { date: "May", rate: 2.38 },
-    { date: "Jun", rate: 2.45 },
-  ],
-};
-
 export default function MarketsPage() {
   const setMapViewState = useAppStore((s) => s.setMapViewState);
-  const [selected, setSelected] = useState<MarketDetail | null>(MOCK_DETAIL);
+  const [selected, setSelected] = useState<MarketDetail | null>(null);
 
   const handleSelect = async (m: MarketScore) => {
     setMapViewState({ latitude: m.lat, longitude: m.lng, zoom: 7, pitch: 40, bearing: 0 });
     try {
       const detail = await getMarketDetails(m.city, m.state);
-      setSelected(detail);
+      setSelected({
+        ...m,
+        ...detail,
+        top_lanes: detail.top_lanes ?? [],
+        rate_history: detail.rate_history ?? [],
+      });
     } catch {
-      setSelected({ ...MOCK_DETAIL, ...m });
+      setSelected({ ...m, top_lanes: [], rate_history: [] });
     }
   };
 
@@ -50,7 +37,13 @@ export default function MarketsPage() {
 
       <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
         <TopMarketsTable onSelect={handleSelect} />
-        {selected && <MarketDetailCard market={selected} />}
+        {selected ? (
+          <MarketDetailCard market={selected} />
+        ) : (
+          <div className="flex items-center justify-center rounded-lg border border-dashed border-border p-8 text-sm text-text-secondary">
+            Select a market from the table to view details
+          </div>
+        )}
       </div>
 
       <div>

@@ -91,6 +91,12 @@ class ProfitBreakdown(BaseModel):
     composite_score: float
     destination_market_score: Optional[float] = None
     destination_market_label: str = "Unknown"
+    dest_city: Optional[str] = None
+    dest_state: Optional[str] = None
+    origin_lat: Optional[float] = None
+    origin_lng: Optional[float] = None
+    dest_lat: Optional[float] = None
+    dest_lng: Optional[float] = None
     equipment: str
     commodity: str
     origin: str

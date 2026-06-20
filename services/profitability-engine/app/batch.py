@@ -53,9 +53,11 @@ class BatchCalculator:
         pool = await get_pool()
 
         for load in loads:
-            dest_score = await self._fetch_market_score(load.dest_city, load.dest_state)
+            dest_city = load.dest_city.strip()
+            dest_state = load.dest_state.strip().upper()
+            dest_score = await self._fetch_market_score(dest_city, dest_state)
             deadhead_from = await estimate_post_delivery_deadhead(
-                load.dest_city, load.dest_state, load.equipment, pool
+                dest_city, dest_state, load.equipment, pool
             )
             breakdown = self.calculator.calculate(
                 load,
@@ -88,9 +90,11 @@ class BatchCalculator:
             all_loads = await get_loads_by_equipment(eq, limit=100)
             pool = await get_pool()
             for load in all_loads[:50]:
-                dest_score = await self._fetch_market_score(load.dest_city, load.dest_state)
+                dest_city = load.dest_city.strip()
+                dest_state = load.dest_state.strip().upper()
+                dest_score = await self._fetch_market_score(dest_city, dest_state)
                 deadhead_from = await estimate_post_delivery_deadhead(
-                    load.dest_city, load.dest_state, load.equipment, pool
+                    dest_city, dest_state, load.equipment, pool
                 )
                 breakdowns.append(
                     self.calculator.calculate(

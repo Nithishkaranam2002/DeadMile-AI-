@@ -15,7 +15,12 @@ export function SimulatorMap() {
   const [loading, setLoading] = useState(false);
   const { driverLat, driverLng, equipment, driverCity, driverState } = useAppStore();
 
-  const runWhatIf = async (lat: number, lng: number) => {
+  const lat = driverLat ?? 32.7767;
+  const lng = driverLng ?? -96.797;
+  const locationLabel =
+    driverCity && driverState ? `${driverCity}, ${driverState}` : "Dallas, TX (default)";
+
+  const runWhatIf = async (runLat: number, runLng: number) => {
     setLoading(true);
     try {
       const data = await calculateWhatIf(lat, lng, equipment);
@@ -35,8 +40,8 @@ export function SimulatorMap() {
   };
 
   useEffect(() => {
-    if (driverLat && driverLng) runWhatIf(driverLat, driverLng);
-  }, [driverLat, driverLng, equipment]);
+    void runWhatIf(lat, lng);
+  }, [lat, lng, equipment]);
 
   return (
     <div className="grid gap-4 lg:grid-cols-3">
@@ -52,7 +57,7 @@ export function SimulatorMap() {
           {loading && <p className="text-text-secondary">Calculating...</p>}
           {result && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-              <h3 className="text-lg font-bold">📍 {driverCity}, {driverState}</h3>
+              <h3 className="text-lg font-bold">📍 {locationLabel}</h3>
               <SeparatorBlock />
               <StatRow label="Available loads" value={String(result.available_loads_count)} />
               <StatRow label="Avg net profit" value={formatCurrency(result.avg_net_profit)} />

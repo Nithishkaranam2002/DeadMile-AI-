@@ -124,10 +124,15 @@ async def get_loads_by_equipment(equipment: Optional[str] = None, limit: int = 5
 
 
 async def get_market_score(city: str, state: str) -> Optional[float]:
+    city = city.strip()
+    state = state.strip().upper()
     pool = await get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            "SELECT market_score FROM market_scores WHERE LOWER(city) = LOWER($1) AND UPPER(state) = UPPER($2)",
+            """
+            SELECT market_score FROM market_scores
+            WHERE LOWER(TRIM(city)) = LOWER($1) AND UPPER(TRIM(state)) = $2
+            """,
             city,
             state,
         )

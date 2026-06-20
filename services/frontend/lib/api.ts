@@ -176,6 +176,12 @@ export async function calculateWhatIf(
   return resp.json();
 }
 
+export async function getLoadById(loadId: string): Promise<Load> {
+  const resp = await fetch(`${getApiBase()}/loads/${encodeURIComponent(loadId)}`);
+  if (!resp.ok) throw new Error("Load not found");
+  return resp.json();
+}
+
 export async function searchLoads(
   lat: number,
   lng: number,

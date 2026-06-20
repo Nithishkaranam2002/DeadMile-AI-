@@ -25,12 +25,14 @@ export function MarketHeatmap() {
           avg_inbound_rate: 0,
           lane_balance_ratio: 1,
           market_score: d.score,
-          label: d.score >= 70 ? "Warm" : d.score >= 90 ? "Hot" : "Neutral",
+          label: d.score >= 90 ? "Hot" : d.score >= 70 ? "Warm" : d.score >= 50 ? "Neutral" : "Cool",
         }));
         setTopMarkets(markets.length ? markets : MOCK_MARKETS);
       })
       .catch(() => setTopMarkets(MOCK_MARKETS));
-  }, [setTopMarkets, showHeatmap, toggleHeatmap]);
+    // Enable heatmap once on mount for this view.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [setTopMarkets]);
 
   return (
     <div className="h-[600px] overflow-hidden rounded-lg border border-border">
