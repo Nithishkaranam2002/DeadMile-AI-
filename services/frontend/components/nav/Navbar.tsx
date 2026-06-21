@@ -9,6 +9,7 @@ const links = [
   { href: "/", label: "Dashboard" },
   { href: "/markets", label: "Markets" },
   { href: "/simulator", label: "Simulator" },
+  { href: "/settings", label: "Fleet Settings" },
 ];
 
 export function Navbar() {
@@ -48,9 +49,16 @@ export function Navbar() {
           >
             <Github className="h-5 w-5" />
           </a>
-          <button className="text-text-secondary hover:text-primary" aria-label="Settings">
+          <Link
+            href="/settings"
+            className={cn(
+              "text-text-secondary hover:text-primary",
+              pathname === "/settings" && "text-primary"
+            )}
+            aria-label="Fleet Settings"
+          >
             <Settings className="h-5 w-5" />
-          </button>
+          </Link>
         </div>
       </div>
     </header>

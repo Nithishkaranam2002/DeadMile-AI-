@@ -203,3 +203,22 @@ export interface ViewState {
   pitch?: number;
   bearing?: number;
 }
+
+export interface CarrierCostProfile {
+  carrier_id: string;
+  company_name: string;
+  default_equipment: string;
+  max_deadhead_miles: number;
+  fuel_price_per_gallon: number;
+  avg_mpg_loaded: number;
+  avg_mpg_empty: number;
+  driver_cpm: number;
+  insurance_per_mile: number;
+  maintenance_per_mile: number;
+  tolls_per_mile: number;
+  dispatch_fee_percent: number;
+  factoring_fee_percent: number;
+  overhead_per_mile: number;
+  home_city?: string | null;
+  home_state?: string | null;
+}

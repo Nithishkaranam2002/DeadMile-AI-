@@ -1,15 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bot, Send } from "lucide-react";
+import { Bot, Search, Send } from "lucide-react";
 import { streamChat } from "@/lib/api";
 import { searchCities } from "@/lib/cities";
+import { buildLoadSearchMessages, EQUIPMENT_OPTIONS, resolveCityQuery } from "@/lib/search-query";
+import { cn } from "@/lib/utils";
 import { useAppStore } from "@/lib/store";
 import type { AgentEvent } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DeadheadControl } from "@/components/DeadheadControl";
 import { Separator } from "@/components/ui/separator";
 import { AgentStream, ChatMessageList } from "./AgentStream";
@@ -44,6 +45,7 @@ export function ChatPanel() {
     setMapViewState,
     setMessages,
     setAgentActivity,
+    recommendedLoads,
   } = useAppStore();
 
   const handleCityChange = (value: string) => {
@@ -58,7 +60,11 @@ export function ChatPanel() {
   };
 
   const sendMessage = useCallback(
-    async (overrideMessage?: string, displayMessage?: string) => {
+    async (
+      overrideMessage?: string,
+      displayMessage?: string,
+      coords?: { lat: number; lng: number }
+    ) => {
       const message = (overrideMessage ?? input).trim();
       if (!message || isStreaming) return;
       if (!overrideMessage) setInput("");
@@ -77,12 +83,10 @@ export function ChatPanel() {
       setAgentActivity("Finding your best loads…");
       setEvents([]);
 
-      const lat = driverLat ?? 32.7767;
-      const lng = driverLng ?? -96.797;
+      const lat = coords?.lat ?? driverLat ?? 32.7767;
+      const lng = coords?.lng ?? driverLng ?? -96.797;
 
-      if (driverLat && driverLng) {
-        setMapViewState({ latitude: lat, longitude: lng, zoom: 6, pitch: 20, bearing: 0 });
-      }
+      setMapViewState({ latitude: lat, longitude: lng, zoom: 6, pitch: 20, bearing: 0 });
 
       abortRef.current?.abort();
       abortRef.current = streamChat(
@@ -127,6 +131,44 @@ export function ChatPanel() {
     }
   }, [events, setIsStreaming, setAgentStatus]);
 
+  const runLoadSearch = useCallback(() => {
+    if (isStreaming) return;
+
+    const match =
+      resolveCityQuery(cityQuery) ??
+      (driverCity && driverState
+        ? resolveCityQuery(`${driverCity}, ${driverState}`)
+        : null) ??
+      searchCities("Dallas")[0];
+
+    if (!match) return;
+
+    setDriverLocation(match.lat, match.lng, match.city, match.state);
+    setCityQuery(`${match.city}, ${match.state}`);
+
+    const { agentMessage, displayMessage } = buildLoadSearchMessages(
+      equipment,
+      match.city,
+      match.state,
+      maxDeadhead
+    );
+    void sendMessage(agentMessage, displayMessage, { lat: match.lat, lng: match.lng });
+  }, [
+    isStreaming,
+    cityQuery,
+    driverCity,
+    driverState,
+    equipment,
+    maxDeadhead,
+    setDriverLocation,
+    sendMessage,
+  ]);
+
+  const locationLabel =
+    cityQuery ||
+    (driverCity && driverState ? `${driverCity}, ${driverState}` : "Dallas, TX");
+  const hasResults = recommendedLoads.length > 0;
+
   return (
     <div className="flex h-full flex-col border-r border-border bg-surface">
       <div className="border-b border-border p-4">
@@ -135,16 +177,22 @@ export function ChatPanel() {
           <h2 className="font-bold">DeadMile AI</h2>
         </div>
         <p className="text-xs text-text-secondary">
-          Ask here — ranked loads show on the map →
+          Change equipment or miles, then tap Search Loads — no need to go back
         </p>
       </div>
 
-      <div className="space-y-3 border-b border-border p-4">
+      <div className="z-20 shrink-0 space-y-3 border-b border-border bg-surface p-4 shadow-sm">
         <div className="relative">
           <Input
             placeholder="📍 Location (city)"
             value={cityQuery || (driverCity ? `${driverCity}, ${driverState}` : "")}
             onChange={(e) => handleCityChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                runLoadSearch();
+              }
+            }}
           />
           {suggestions.length > 0 && (
             <div className="absolute z-10 mt-1 w-full rounded-md border border-border bg-surface shadow-lg">
@@ -161,21 +209,50 @@ export function ChatPanel() {
             </div>
           )}
         </div>
-        <Select value={equipment} onValueChange={setEquipment}>
-          <SelectTrigger>
-            <SelectValue placeholder="🚛 Equipment" />
-          </SelectTrigger>
-          <SelectContent>
-            {["Dry Van", "Flatbed", "Reefer", "Step Deck"].map((e) => (
-              <SelectItem key={e} value={e}>{e}</SelectItem>
+        <div>
+          <p className="mb-2 text-xs text-text-secondary">🚛 Equipment type</p>
+          <div className="grid grid-cols-2 gap-2">
+            {EQUIPMENT_OPTIONS.map((eq) => (
+              <button
+                key={eq}
+                type="button"
+                onClick={() => setEquipment(eq)}
+                disabled={isStreaming}
+                className={cn(
+                  "rounded-md border px-2 py-2 text-sm transition-colors",
+                  equipment === eq
+                    ? "border-primary bg-primary/15 font-semibold text-primary"
+                    : "border-border bg-surface-hover text-text-secondary hover:border-primary/50"
+                )}
+              >
+                {eq}
+              </button>
             ))}
-          </SelectContent>
-        </Select>
+          </div>
+        </div>
         <DeadheadControl
           value={maxDeadhead}
           onChange={setMaxDeadhead}
           label={`📏 Max deadhead? ${maxDeadhead} mi`}
         />
+        <div className="rounded-md border border-border/60 bg-surface-hover px-3 py-2 text-xs text-text-secondary">
+          Ready to search:{" "}
+          <span className="font-medium text-text-primary">
+            {equipment} · {locationLabel} · {maxDeadhead} mi
+          </span>
+        </div>
+        <Button
+          className="w-full gap-2 font-semibold"
+          size="lg"
+          onClick={runLoadSearch}
+          disabled={isStreaming}
+        >
+          <Search className="h-4 w-4" />
+          {isStreaming ? "Searching…" : hasResults ? "Update Search" : "Search Loads"}
+        </Button>
+        <p className="text-center text-[11px] text-text-secondary">
+          Press Enter in the location field to search
+        </p>
       </div>
 
       <ScrollArea className="flex-1 p-4">

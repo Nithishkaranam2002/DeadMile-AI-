@@ -171,6 +171,8 @@ make dev    # Light stack (~8 containers) — core services only
 make demo   # Full stack (19 containers) — for demos and judging
 ```
 
+See **[PRODUCTION.md](./PRODUCTION.md)** for deploying as a real fleet product (carrier profiles, API keys, production mode).
+
 ## 🎬 Demo
 
 See **[DEMO.md](./DEMO.md)** for the complete 5-minute demo script with talking points, Q&A prep, and step-by-step walkthrough.

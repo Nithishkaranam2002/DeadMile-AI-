@@ -28,9 +28,20 @@ class Settings(BaseSettings):
     api_gateway_url: str = "http://api-gateway:8000"
     agent_core_url: str = "http://agent-core:8001"
 
+    api_gateway_key: str = ""
+    default_carrier_id: str = "default"
+
     @property
     def asyncpg_dsn(self) -> str:
         return self.database_url.replace("postgresql+asyncpg://", "postgresql://")
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.lower() in ("production", "prod")
+
+    @property
+    def require_api_key(self) -> bool:
+        return bool(self.api_gateway_key.strip())
 
 
 settings = Settings()

@@ -16,7 +16,7 @@ from app.db import close_pool, get_load_by_id, get_market_score, get_pool
 from app.deadhead import estimate_post_delivery_deadhead
 from shared.cache import CacheManager
 from shared.config import settings
-from shared.cost_settings import cost_settings
+from shared.cost_settings import cost_settings, merge_cost_settings
 from shared.models import ProfitBreakdown
 
 structlog.configure(
@@ -35,11 +35,25 @@ cache = CacheManager(settings.redis_url)
 PROFIT_CACHE_TTL = 900  # 15 minutes
 
 
+class CostOverrides(BaseModel):
+    fuel_price_per_gallon: Optional[float] = None
+    avg_mpg_loaded: Optional[float] = None
+    avg_mpg_empty: Optional[float] = None
+    driver_cpm: Optional[float] = None
+    insurance_per_mile: Optional[float] = None
+    maintenance_per_mile: Optional[float] = None
+    tolls_per_mile: Optional[float] = None
+    dispatch_fee_percent: Optional[float] = None
+    factoring_fee_percent: Optional[float] = None
+    overhead_per_mile: Optional[float] = None
+
+
 class CalculateRequest(BaseModel):
     load_id: str
     driver_lat: float
     driver_lng: float
     fuel_price_override: Optional[float] = None
+    cost_overrides: Optional[CostOverrides] = None
 
 
 class BatchRequest(BaseModel):
@@ -49,6 +63,7 @@ class BatchRequest(BaseModel):
     max_deadhead_miles: int = Field(default=250, ge=0, le=500)
     limit: int = Field(default=20, ge=1, le=100)
     fuel_price_override: Optional[float] = None
+    cost_overrides: Optional[CostOverrides] = None
 
 
 class WhatIfRequest(BaseModel):
@@ -56,6 +71,7 @@ class WhatIfRequest(BaseModel):
     lng: float
     equipment: Optional[str] = None
     fuel_price_override: Optional[float] = None
+    cost_overrides: Optional[CostOverrides] = None
 
 
 @asynccontextmanager
@@ -119,7 +135,10 @@ async def calculate_single(req: CalculateRequest) -> ProfitBreakdown:
         dest_city, dest_state, load.equipment, pool
     )
 
-    breakdown = calculator.calculate(
+    overrides = req.cost_overrides.model_dump(exclude_none=True) if req.cost_overrides else None
+    calc = ProfitabilityCalculator(settings=merge_cost_settings(overrides))
+
+    breakdown = calc.calculate(
         load,
         req.driver_lat,
         req.driver_lng,
@@ -133,7 +152,9 @@ async def calculate_single(req: CalculateRequest) -> ProfitBreakdown:
 
 @app.post("/calculate/batch", response_model=list[ProfitBreakdown])
 async def calculate_batch(req: BatchRequest) -> list[ProfitBreakdown]:
-    return await batch_calculator.calculate_top_loads(
+    overrides = req.cost_overrides.model_dump(exclude_none=True) if req.cost_overrides else None
+    calc = BatchCalculator(ProfitabilityCalculator(settings=merge_cost_settings(overrides)))
+    return await calc.calculate_top_loads(
         req.driver_lat,
         req.driver_lng,
         req.equipment,
@@ -145,6 +166,8 @@ async def calculate_batch(req: BatchRequest) -> list[ProfitBreakdown]:
 
 @app.post("/calculate/what-if")
 async def calculate_what_if(req: WhatIfRequest) -> dict[str, Any]:
-    return await batch_calculator.calculate_all_from_location(
+    overrides = req.cost_overrides.model_dump(exclude_none=True) if req.cost_overrides else None
+    calc = BatchCalculator(ProfitabilityCalculator(settings=merge_cost_settings(overrides)))
+    return await calc.calculate_all_from_location(
         req.lat, req.lng, req.equipment, req.fuel_price_override
     )

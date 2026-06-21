@@ -7,6 +7,7 @@ import asyncio
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field
 
+from app.carrier_context import get_cost_overrides
 from app.config import settings
 from app.proxy import proxy_json
 from app.schemas import CompareRequest, WhatIfRequest
@@ -25,10 +26,12 @@ class BatchRequest(BaseModel):
 @router.post("/what-if")
 async def what_if(request: WhatIfRequest, req: Request) -> dict:
     request_id = req.headers.get("X-Request-ID")
+    body = request.model_dump()
+    body["cost_overrides"] = await get_cost_overrides(req)
     return await proxy_json(
         "POST",
         f"{settings.profitability_engine_url}/calculate/what-if",
-        json_body=request.model_dump(),
+        json_body=body,
         timeout=60.0,
         request_id=request_id,
     )
@@ -37,10 +40,12 @@ async def what_if(request: WhatIfRequest, req: Request) -> dict:
 @router.post("/batch")
 async def batch_calculate(request: BatchRequest, req: Request) -> list:
     request_id = req.headers.get("X-Request-ID")
+    body = request.model_dump()
+    body["cost_overrides"] = await get_cost_overrides(req)
     return await proxy_json(
         "POST",
         f"{settings.profitability_engine_url}/calculate/batch",
-        json_body=request.model_dump(),
+        json_body=body,
         timeout=60.0,
         request_id=request_id,
     )

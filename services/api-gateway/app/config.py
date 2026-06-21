@@ -16,12 +16,24 @@ class Settings(BaseSettings):
     market_intelligence_url: str = "http://market-intelligence:8005"
     temporal_address: str = "temporal:7233"
     temporal_task_queue: str = "load-chain-queue"
+    environment: str = "development"
+    api_gateway_key: str = ""
+    default_carrier_id: str = "default"
     cors_origins: list[str] = [
         "http://localhost:3000",
         "http://localhost:8888",
         "http://frontend:3000",
         "http://localhost",
     ]
+
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.lower() in ("production", "prod")
+
+    @property
+    def require_api_key(self) -> bool:
+        return bool(self.api_gateway_key.strip())
 
 
 settings = Settings()

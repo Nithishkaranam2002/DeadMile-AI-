@@ -81,7 +81,13 @@ db-reset: ## Drop and recreate all database tables
 	@echo "Resetting database..."
 	$(COMPOSE) exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -f /docker-entrypoint-initdb.d/002_reset.sql
 	$(COMPOSE) exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -f /docker-entrypoint-initdb.d/001_init.sql
+	$(COMPOSE) exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -f /docker-entrypoint-initdb.d/003_production.sql
 	@echo "Database reset complete."
+
+db-migrate-prod: ## Apply production schema (carrier profiles, audit)
+	@echo "Applying production migration..."
+	$(COMPOSE) exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -f /docker-entrypoint-initdb.d/003_production.sql
+	@echo "Production schema ready."
 
 test-ingestion: ## Run load-ingestion unit tests
 	cd services/load-ingestion && pip install -q -r requirements.txt && PYTHONPATH="../../:." pytest tests/ -v

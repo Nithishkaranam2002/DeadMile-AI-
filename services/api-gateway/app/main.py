@@ -13,9 +13,11 @@ from starlette.responses import Response
 
 from app.config import settings
 from app.db import close_pool, get_pool
+from app.middleware.auth import ApiKeyMiddleware
 from app.middleware.cors import setup_cors
 from app.middleware.metrics import MetricsMiddleware
 from app.redis_client import close_redis, get_redis
+from app.routers.carrier import router as carrier_router
 from app.routers.chain import router as chain_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.health import router as health_router
@@ -53,6 +55,7 @@ app = FastAPI(
 )
 
 setup_cors(app)
+app.add_middleware(ApiKeyMiddleware)
 app.add_middleware(MetricsMiddleware)
 
 app.include_router(health_router)
@@ -62,6 +65,7 @@ app.include_router(markets_router)
 app.include_router(simulate_router)
 app.include_router(chain_router)
 app.include_router(dashboard_router)
+app.include_router(carrier_router)
 
 
 @app.get("/health")

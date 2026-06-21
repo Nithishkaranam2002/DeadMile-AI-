@@ -1,5 +1,6 @@
 import type {
   AgentEvent,
+  CarrierCostProfile,
   DashboardStats,
   HeatmapData,
   Load,
@@ -8,6 +9,7 @@ import type {
   ProfitBreakdown,
   WhatIfResult,
 } from "./types";
+import { apiHeaders, isProductionMode } from "./config";
 
 /** Resolve API base URL at runtime so Docker port changes don't require a rebuild. */
 export function getApiBase(): string {
@@ -67,7 +69,7 @@ export function streamChat(
     try {
       const resp = await fetch(`${apiBase}/recommend/stream`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+        headers: { ...apiHeaders(), Accept: "text/event-stream" },
         body: JSON.stringify({
           message,
           driver_lat: driverLat,
@@ -224,6 +226,7 @@ export async function getDashboardStats(): Promise<DashboardStats> {
       avg_rate_per_mile: data.avg_rate_per_mile,
     };
   } catch {
+    if (isProductionMode()) throw new Error("stats failed");
     return {
       total_loads: 2847,
       avg_net_profit: 687,
@@ -286,7 +289,25 @@ export async function optimizeChain(params: {
 }
 
 export async function getChainResult(workflowId: string) {
-  const resp = await fetch(`${getApiBase()}/chain/result/${workflowId}`);
+  const resp = await fetch(`${getApiBase()}/chain/result/${workflowId}`, { headers: apiHeaders() });
   if (!resp.ok) throw new Error("Chain result not ready");
+  return resp.json();
+}
+
+export async function getCarrierProfile(): Promise<CarrierCostProfile> {
+  const resp = await fetch(`${getApiBase()}/carrier/profile`, { headers: apiHeaders() });
+  if (!resp.ok) throw new Error("Failed to load fleet profile");
+  return resp.json();
+}
+
+export async function updateCarrierProfile(
+  profile: Partial<CarrierCostProfile>
+): Promise<CarrierCostProfile> {
+  const resp = await fetch(`${getApiBase()}/carrier/profile`, {
+    method: "PUT",
+    headers: apiHeaders(),
+    body: JSON.stringify(profile),
+  });
+  if (!resp.ok) throw new Error("Failed to save fleet profile");
   return resp.json();
 }

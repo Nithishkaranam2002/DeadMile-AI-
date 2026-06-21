@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getMarketHeatmap } from "@/lib/api";
+import { isProductionMode } from "@/lib/config";
 import { MOCK_MARKETS } from "@/lib/mock-data";
 import { LoadMapDynamic } from "@/components/map/LoadMapDynamic";
 import { useAppStore } from "@/lib/store";
@@ -27,9 +28,11 @@ export function MarketHeatmap() {
           market_score: d.score,
           label: d.score >= 90 ? "Hot" : d.score >= 70 ? "Warm" : d.score >= 50 ? "Neutral" : "Cool",
         }));
-        setTopMarkets(markets.length ? markets : MOCK_MARKETS);
+        setTopMarkets(markets.length ? markets : isProductionMode() ? [] : MOCK_MARKETS);
       })
-      .catch(() => setTopMarkets(MOCK_MARKETS));
+      .catch(() => {
+        if (!isProductionMode()) setTopMarkets(MOCK_MARKETS);
+      });
     // Enable heatmap once on mount for this view.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setTopMarkets]);

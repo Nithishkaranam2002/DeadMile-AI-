@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { getTopMarkets } from "@/lib/api";
+import { isProductionMode } from "@/lib/config";
 import { MOCK_MARKETS } from "@/lib/mock-data";
 import { marketColor, marketEmoji } from "@/lib/utils";
 import type { MarketScore } from "@/lib/types";
@@ -15,7 +16,11 @@ export function TopMarketsTable({ onSelect }: { onSelect?: (m: MarketScore) => v
   const [desc, setDesc] = useState(true);
 
   useEffect(() => {
-    getTopMarkets(25).then(setMarkets).catch(() => setMarkets(MOCK_MARKETS));
+    getTopMarkets(25)
+      .then(setMarkets)
+      .catch(() => {
+        if (!isProductionMode()) setMarkets(MOCK_MARKETS);
+      });
   }, []);
 
   const sorted = [...markets].sort((a, b) => {
