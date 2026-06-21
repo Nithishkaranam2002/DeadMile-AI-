@@ -24,6 +24,7 @@ from app.routers.health import router as health_router
 from app.routers.loads import router as loads_router
 from app.routers.markets import router as markets_router
 from app.routers.recommend import router as recommend_router
+from app.routers.import_loads import router as import_router
 from app.routers.simulate import router as simulate_router
 from app.temporal.worker import start_temporal_worker, stop_temporal_worker
 
@@ -66,6 +67,7 @@ app.include_router(simulate_router)
 app.include_router(chain_router)
 app.include_router(dashboard_router)
 app.include_router(carrier_router)
+app.include_router(import_router)
 
 
 @app.get("/health")

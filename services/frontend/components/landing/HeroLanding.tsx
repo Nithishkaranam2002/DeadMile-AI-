@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useSession, signIn } from "next-auth/react";
 import { animate, motion } from "framer-motion";
-import { Rocket, Truck } from "lucide-react";
-import { getDashboardStats } from "@/lib/api";
+import { ClipboardPaste, Rocket, Scale, Truck, TrendingUp } from "lucide-react";
+import { getDashboardStats, getDriverCount } from "@/lib/api";
 import { searchCities } from "@/lib/cities";
 import { MOCK_STATS } from "@/lib/mock-data";
 import { useAppStore } from "@/lib/store";
@@ -43,6 +45,8 @@ export function HeroLanding() {
   const [suggestions, setSuggestions] = useState<ReturnType<typeof searchCities>>([]);
   const [submitting, setSubmitting] = useState(false);
   const [motionReady, setMotionReady] = useState(false);
+  const [driverCount, setDriverCount] = useState(0);
+  const { status } = useSession();
 
   const { setDriverLocation, setEquipment, setMaxDeadhead, dismissHero, triggerSearch } = useAppStore();
 
@@ -54,9 +58,14 @@ export function HeroLanding() {
     getDashboardStats()
       .then(setStats)
       .catch(() => setStats(MOCK_STATS));
+    getDriverCount().then(setDriverCount).catch(() => {});
   }, []);
 
   const handleFindLoads = () => {
+    if (status === "unauthenticated") {
+      signIn(undefined, { callbackUrl: "/" });
+      return;
+    }
     const match =
       searchCities(cityQuery).find(
         (c) => `${c.city}, ${c.state}`.toLowerCase() === cityQuery.toLowerCase()
@@ -142,11 +151,19 @@ export function HeroLanding() {
           initial={motionReady ? { opacity: 0 } : false}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.35 }}
-          className="mb-10 max-w-xl text-text-secondary"
+          className="mb-4 max-w-xl text-text-secondary"
         >
           AI-powered load optimization that maximizes your{" "}
           <span className="font-semibold text-accent">NET profit</span> — not just gross revenue.
         </motion.p>
+
+        <motion.span
+          initial={motionReady ? { opacity: 0 } : false}
+          animate={{ opacity: 1 }}
+          className="mb-8 inline-flex items-center gap-2 rounded-full border border-accent/40 bg-accent/10 px-4 py-1.5 text-sm font-semibold text-accent"
+        >
+          100% Free — No credit card · No limits
+        </motion.span>
 
         <motion.div
           initial={motionReady ? { opacity: 0, scale: 0.96 } : false}
@@ -239,6 +256,74 @@ export function HeroLanding() {
             </motion.div>
           ))}
         </motion.div>
+      </div>
+
+      {/* How it works + social proof */}
+      <div className="relative z-10 mx-auto max-w-5xl px-4 pb-16">
+        <h3 className="mb-8 text-center text-xl font-bold md:text-2xl">How It Works</h3>
+        <div className="mb-12 grid gap-6 md:grid-cols-3">
+          {[
+            {
+              icon: ClipboardPaste,
+              title: "Paste your loads",
+              desc: "Copy listings from DAT, Truckstop, or any load board.",
+            },
+            {
+              icon: Scale,
+              title: "True net profit",
+              desc: "We calculate fuel, deadhead, fees, and destination market score.",
+            },
+            {
+              icon: TrendingUp,
+              title: "Pick the winner",
+              desc: "See which load actually puts the most money in your pocket.",
+            },
+          ].map((step, i) => (
+            <div
+              key={step.title}
+              className="rounded-xl border border-border bg-surface/80 p-6 text-center backdrop-blur"
+            >
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-primary/10">
+                <step.icon className="h-6 w-6 text-primary" />
+              </div>
+              <div className="mb-1 text-sm font-bold text-primary">Step {i + 1}</div>
+              <h4 className="mb-2 font-semibold">{step.title}</h4>
+              <p className="text-sm text-text-secondary">{step.desc}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="mb-12 rounded-xl border border-border bg-surface/80 p-6 md:p-8">
+          <h3 className="mb-4 text-lg font-bold">Why Gross Rate Lies to You</h3>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-lg border border-danger/30 bg-danger/5 p-4">
+              <div className="text-sm text-text-secondary">Load paying $3,100 gross</div>
+              <div className="font-mono-num text-2xl font-bold text-danger">$412 net</div>
+              <div className="mt-1 text-xs text-text-secondary">Dead market · 180mi deadhead next</div>
+            </div>
+            <div className="rounded-lg border border-accent/30 bg-accent/5 p-4">
+              <div className="text-sm text-text-secondary">Load paying $2,275 gross</div>
+              <div className="font-mono-num text-2xl font-bold text-accent">$892 net</div>
+              <div className="mt-1 text-xs text-text-secondary">Hot market · 22mi deadhead next</div>
+            </div>
+          </div>
+          <p className="mt-4 text-center text-sm text-text-secondary">
+            Lower gross can mean higher NET when destination markets and deadhead differ.
+          </p>
+        </div>
+
+        <div className="flex flex-col items-center gap-4 text-center">
+          <Link
+            href="/compare"
+            className="inline-flex items-center gap-2 rounded-lg border border-primary bg-primary/10 px-6 py-3 font-semibold text-primary hover:bg-primary/20"
+          >
+            🥊 Try the Load Showdown
+          </Link>
+          <p className="text-sm text-text-secondary">
+            Used by{" "}
+            <span className="font-mono-num font-bold text-primary">{driverCount}</span> drivers
+          </p>
+        </div>
       </div>
     </div>
   );

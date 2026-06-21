@@ -89,6 +89,11 @@ db-migrate-prod: ## Apply production schema (carrier profiles, audit)
 	$(COMPOSE) exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -f /docker-entrypoint-initdb.d/003_production.sql
 	@echo "Production schema ready."
 
+db-migrate-auth: ## Apply auth schema (user accounts)
+	@echo "Applying auth migration..."
+	$(COMPOSE) exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -f /docker-entrypoint-initdb.d/004_auth.sql
+	@echo "Auth schema ready."
+
 test-ingestion: ## Run load-ingestion unit tests
 	cd services/load-ingestion && pip install -q -r requirements.txt && PYTHONPATH="../../:." pytest tests/ -v
 

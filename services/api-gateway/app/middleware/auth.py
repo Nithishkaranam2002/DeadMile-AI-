@@ -35,7 +35,8 @@ class ApiKeyMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: Callable):
         if not settings.require_api_key:
-            request.state.carrier_id = "default"
+            carrier_id = request.headers.get("X-Carrier-Id") or request.headers.get("x-carrier-id") or "default"
+            request.state.carrier_id = carrier_id[:64]
             return await call_next(request)
 
         path = request.url.path.rstrip("/") or "/"

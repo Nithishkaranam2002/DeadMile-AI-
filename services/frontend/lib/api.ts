@@ -311,3 +311,85 @@ export async function updateCarrierProfile(
   if (!resp.ok) throw new Error("Failed to save fleet profile");
   return resp.json();
 }
+
+export interface ImportAnalyzeResult {
+  loads: ProfitBreakdown[];
+  parsed_count: number;
+  insight: string;
+  winner_load_id?: string;
+}
+
+export async function parseImportedLoads(params: {
+  raw_text: string;
+  driver_lat: number;
+  driver_lng: number;
+  equipment: string;
+}): Promise<ImportAnalyzeResult> {
+  const resp = await fetch(`${getApiBase()}/import/parse`, {
+    method: "POST",
+    headers: apiHeaders(),
+    body: JSON.stringify(params),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.detail || "Import parse failed");
+  }
+  return resp.json();
+}
+
+export async function parseScreenshotImport(
+  file: File,
+  driver_lat: number,
+  driver_lng: number,
+  equipment: string
+): Promise<ImportAnalyzeResult> {
+  const form = new FormData();
+  form.append("file", file);
+  form.append("driver_lat", String(driver_lat));
+  form.append("driver_lng", String(driver_lng));
+  form.append("equipment", equipment);
+
+  const headers = apiHeaders();
+  delete headers["Content-Type"];
+
+  const resp = await fetch(`${getApiBase()}/import/screenshot`, {
+    method: "POST",
+    headers,
+    body: form,
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.detail || "Screenshot import failed");
+  }
+  return resp.json();
+}
+
+export async function compareLoadsText(params: {
+  load_a_text: string;
+  load_b_text: string;
+  driver_lat: number;
+  driver_lng: number;
+  equipment: string;
+}): Promise<ImportAnalyzeResult> {
+  const resp = await fetch(`${getApiBase()}/import/compare`, {
+    method: "POST",
+    headers: apiHeaders(),
+    body: JSON.stringify(params),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.detail || "Compare failed");
+  }
+  return resp.json();
+}
+
+export async function getDriverCount(): Promise<number> {
+  try {
+    const resp = await fetch(`${getApiBase()}/carrier/stats/drivers`);
+    if (!resp.ok) return 0;
+    const data = await resp.json();
+    return data.count ?? 0;
+  } catch {
+    return 0;
+  }
+}

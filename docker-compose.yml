@@ -417,6 +417,10 @@ services:
       NEXT_PUBLIC_MAPBOX_TOKEN: ${NEXT_PUBLIC_MAPBOX_TOKEN}
       NEXT_PUBLIC_MAPTILER_KEY: ${NEXT_PUBLIC_MAPTILER_KEY:-}
       NEXT_PUBLIC_APP_NAME: ${NEXT_PUBLIC_APP_NAME:-DeadMile AI}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-deadmile-dev-secret-change-in-production-min-32-chars}
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost:3000}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:

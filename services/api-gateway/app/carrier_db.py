@@ -135,3 +135,24 @@ async def log_search_audit(
             top_load_id,
             top_net_profit,
         )
+
+
+async def register_user(pool: asyncpg.Pool, user_id: str, email: str, name: Optional[str] = None) -> bool:
+    """Register user if new. Returns True if newly created."""
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT user_id FROM user_accounts WHERE user_id = $1", user_id[:64])
+        if row:
+            return False
+        await conn.execute(
+            "INSERT INTO user_accounts (user_id, email, name) VALUES ($1, $2, $3)",
+            user_id[:64],
+            email,
+            name,
+        )
+        return True
+
+
+async def count_registered_users(pool: asyncpg.Pool) -> int:
+    async with pool.acquire() as conn:
+        val = await conn.fetchval("SELECT COUNT(*) FROM user_accounts")
+        return int(val or 0)

@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     environment: str = "development"
     api_gateway_key: str = ""
     default_carrier_id: str = "default"
+    openai_api_key: str = ""
     cors_origins: list[str] = [
         "http://localhost:3000",
         "http://localhost:8888",

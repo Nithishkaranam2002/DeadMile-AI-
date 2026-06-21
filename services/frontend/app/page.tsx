@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
+import { useSession } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { HeroLanding } from "@/components/landing/HeroLanding";
@@ -14,6 +16,8 @@ import { getDashboardStats } from "@/lib/api";
 import { useAppStore } from "@/lib/store";
 
 export default function DashboardPage() {
+  const router = useRouter();
+  const { status } = useSession();
   const showHero = useAppStore((s) => s.showHero);
   const recommendedLoads = useAppStore((s) => s.recommendedLoads);
   const loadChain = useAppStore((s) => s.loadChain);
@@ -25,6 +29,12 @@ export default function DashboardPage() {
   useEffect(() => {
     getDashboardStats().then((stats) => updateStats({ dashboardStats: stats, totalLoads: stats.total_loads }));
   }, [updateStats]);
+
+  useEffect(() => {
+    if (!showHero && status === "unauthenticated") {
+      router.replace("/login?callbackUrl=/");
+    }
+  }, [showHero, status, router]);
 
   const handleShowMap = (load: (typeof recommendedLoads)[0]) => {
     selectLoad(load);
@@ -58,8 +68,8 @@ export default function DashboardPage() {
           transition={{ duration: 0.45 }}
           className="flex h-[calc(100vh-5.5rem)] flex-col lg:flex-row"
         >
-          <aside className="w-full shrink-0 lg:w-[400px] lg:border-r lg:border-border">
-            <div className="h-[45vh] lg:h-full">
+          <aside className="order-2 w-full shrink-0 border-t border-border lg:order-1 lg:h-full lg:w-[400px] lg:border-r lg:border-t-0">
+            <div className="h-[40vh] max-h-[320px] lg:h-full lg:max-h-none">
               <ChatPanel />
             </div>
           </aside>
@@ -94,7 +104,7 @@ export default function DashboardPage() {
                       </ErrorBoundary>
                     </div>
                   )}
-                  <div className="mb-4 grid gap-4 lg:grid-cols-2">
+                  <div className="mb-4 grid gap-4 md:grid-cols-2">
                     {recommendedLoads.map((load, i) => (
                       <LoadCard key={load.load_id} load={load} rank={i + 1} onShowMap={handleShowMap} />
                     ))}

@@ -12,6 +12,8 @@ from pydantic import BaseModel, Field
 
 from app.batch import BatchCalculator
 from app.calculator import ProfitabilityCalculator
+from shared.models import LoadRecord
+
 from app.db import close_pool, get_load_by_id, get_market_score, get_pool
 from app.deadhead import estimate_post_delivery_deadhead
 from shared.cache import CacheManager
@@ -70,6 +72,27 @@ class WhatIfRequest(BaseModel):
     lat: float
     lng: float
     equipment: Optional[str] = None
+    fuel_price_override: Optional[float] = None
+    cost_overrides: Optional[CostOverrides] = None
+
+
+class AdHocCalculateRequest(BaseModel):
+    load_id: str = "IMPORT-1"
+    origin_city: str
+    origin_state: str
+    origin_lat: Optional[float] = None
+    origin_lng: Optional[float] = None
+    dest_city: str
+    dest_state: str
+    dest_lat: Optional[float] = None
+    dest_lng: Optional[float] = None
+    miles: int = Field(..., ge=1)
+    rate: float = Field(..., gt=0)
+    equipment: str = "Dry Van"
+    commodity: str = "General freight"
+    weight_lbs: int = 40000
+    driver_lat: float
+    driver_lng: float
     fuel_price_override: Optional[float] = None
     cost_overrides: Optional[CostOverrides] = None
 
@@ -148,6 +171,49 @@ async def calculate_single(req: CalculateRequest) -> ProfitBreakdown:
     )
     await cache.set(cache_key, breakdown.model_dump(mode="json"), ttl=PROFIT_CACHE_TTL)
     return breakdown
+
+
+@app.post("/calculate/ad-hoc", response_model=ProfitBreakdown)
+async def calculate_ad_hoc(req: AdHocCalculateRequest) -> ProfitBreakdown:
+    """Calculate profitability for an inline load (import/compare) without DB lookup."""
+    load = LoadRecord(
+        load_id=req.load_id,
+        origin_city=req.origin_city,
+        origin_state=req.origin_state,
+        origin_lat=req.origin_lat,
+        origin_lng=req.origin_lng,
+        dest_city=req.dest_city,
+        dest_state=req.dest_state,
+        dest_lat=req.dest_lat,
+        dest_lng=req.dest_lng,
+        equipment=req.equipment,
+        commodity=req.commodity,
+        weight_lbs=req.weight_lbs,
+        miles=req.miles,
+        rate=req.rate,
+        rate_per_mile=round(req.rate / req.miles, 2) if req.miles else 0.0,
+        source="import",
+    )
+
+    dest_city = load.dest_city.strip()
+    dest_state = load.dest_state.strip().upper()
+    dest_score = await get_market_score(dest_city, dest_state)
+    pool = await get_pool()
+    deadhead_from = await estimate_post_delivery_deadhead(
+        dest_city, dest_state, load.equipment, pool
+    )
+
+    overrides = req.cost_overrides.model_dump(exclude_none=True) if req.cost_overrides else None
+    calc = ProfitabilityCalculator(settings=merge_cost_settings(overrides))
+
+    return calc.calculate(
+        load,
+        req.driver_lat,
+        req.driver_lng,
+        fuel_price_override=req.fuel_price_override,
+        destination_market_score=dest_score,
+        deadhead_from_delivery=deadhead_from,
+    )
 
 
 @app.post("/calculate/batch", response_model=list[ProfitBreakdown])
