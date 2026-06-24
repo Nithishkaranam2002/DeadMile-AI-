@@ -317,6 +317,21 @@ export interface ImportAnalyzeResult {
   parsed_count: number;
   insight: string;
   winner_load_id?: string;
+  location_warning?: string;
+  pickup_cities?: string[];
+  nearest_pickup_miles?: number;
+}
+
+export interface ImportHistorySummary {
+  id: number;
+  driver_city?: string;
+  driver_state?: string;
+  equipment?: string;
+  parsed_count: number;
+  insight?: string;
+  top_load?: string;
+  top_net_profit?: number;
+  created_at?: string;
 }
 
 export async function parseImportedLoads(params: {
@@ -380,6 +395,64 @@ export async function compareLoadsText(params: {
     const err = await resp.json().catch(() => ({}));
     throw new Error(err.detail || "Compare failed");
   }
+  return resp.json();
+}
+
+export async function parseCsvImport(params: {
+  csv_text: string;
+  driver_lat: number;
+  driver_lng: number;
+  equipment: string;
+}): Promise<ImportAnalyzeResult> {
+  const resp = await fetch(`${getApiBase()}/import/csv`, {
+    method: "POST",
+    headers: apiHeaders(),
+    body: JSON.stringify(params),
+  });
+  if (!resp.ok) {
+    const err = await resp.json().catch(() => ({}));
+    throw new Error(err.detail || "CSV import failed");
+  }
+  return resp.json();
+}
+
+export async function saveImportHistory(body: {
+  driver_city?: string;
+  driver_state?: string;
+  equipment: string;
+  parsed_count: number;
+  insight: string;
+  loads: ProfitBreakdown[];
+  raw_preview?: string;
+}): Promise<{ id: number }> {
+  const resp = await fetch(`${getApiBase()}/import/history`, {
+    method: "POST",
+    headers: apiHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) throw new Error("Failed to save import");
+  return resp.json();
+}
+
+export async function getImportHistory(): Promise<ImportHistorySummary[]> {
+  const resp = await fetch(`${getApiBase()}/import/history`, { headers: apiHeaders() });
+  if (!resp.ok) return [];
+  return resp.json();
+}
+
+export async function getImportHistoryItem(id: number): Promise<{
+  id: number;
+  driver_city?: string;
+  driver_state?: string;
+  equipment: string;
+  parsed_count: number;
+  insight: string;
+  loads: ProfitBreakdown[];
+  raw_preview?: string;
+  created_at?: string;
+}> {
+  const resp = await fetch(`${getApiBase()}/import/history/${id}`, { headers: apiHeaders() });
+  if (!resp.ok) throw new Error("Import not found");
   return resp.json();
 }
 

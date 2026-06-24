@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import base64
+import csv
+import io
 import json
 import logging
+import math
 import re
 import uuid
 from typing import Any, Optional
@@ -14,6 +17,8 @@ from pydantic import BaseModel, Field
 
 from app.carrier_context import get_cost_overrides
 from app.config import settings
+from app.db import get_pool
+from app.import_history_db import get_import_history, list_import_history, save_import_history
 from app.proxy import proxy_json
 from shared.geocoding import geocode_city
 
@@ -55,6 +60,114 @@ class ImportAnalyzeResponse(BaseModel):
     parsed_count: int
     insight: str
     winner_load_id: Optional[str] = None
+    location_warning: Optional[str] = None
+    pickup_cities: list[str] = Field(default_factory=list)
+    nearest_pickup_miles: Optional[float] = None
+
+
+class CsvImportRequest(BaseModel):
+    csv_text: str = Field(..., min_length=5)
+    driver_lat: float
+    driver_lng: float
+    equipment: str = "Dry Van"
+
+
+class SaveHistoryRequest(BaseModel):
+    driver_city: Optional[str] = None
+    driver_state: Optional[str] = None
+    equipment: str = "Dry Van"
+    parsed_count: int = 0
+    insight: str = ""
+    loads: list[dict[str, Any]]
+    raw_preview: Optional[str] = None
+
+
+def _haversine_miles(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    r = 3958.8
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dlat = math.radians(lat2 - lat1)
+    dlon = math.radians(lon2 - lon1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlon / 2) ** 2
+    return r * 2 * math.asin(math.sqrt(a))
+
+
+def _location_context(
+    driver_lat: float, driver_lng: float, parsed: list[dict[str, Any]]
+) -> tuple[Optional[str], list[str], Optional[float]]:
+    cities: set[str] = set()
+    min_dist: Optional[float] = None
+    for load in parsed:
+        olat, olng = geocode_city(load["origin_city"], load["origin_state"])
+        cities.add(f"{load['origin_city']}, {load['origin_state']}")
+        dist = _haversine_miles(driver_lat, driver_lng, olat, olng)
+        if min_dist is None or dist < min_dist:
+            min_dist = dist
+    warning = None
+    if min_dist is not None and min_dist > 150:
+        pickup_list = ", ".join(sorted(cities)[:3])
+        warning = (
+            f"Your location is ~{min_dist:.0f} mi from the nearest pickup ({pickup_list}). "
+            "Deadhead to pickup is included in profit — make sure your location is where the truck actually is."
+        )
+    return warning, sorted(cities), min_dist
+
+
+_CSV_ORIGIN_KEYS = ("origin", "origin_city", "pickup", "from", "o_city")
+_CSV_DEST_KEYS = ("destination", "dest_city", "delivery", "to", "d_city")
+_CSV_RATE_KEYS = ("rate", "price", "pay", "amount", "gross")
+_CSV_MILES_KEYS = ("miles", "distance", "mi", "loaded_miles")
+
+
+def _csv_field(row: dict[str, str], keys: tuple[str, ...]) -> str:
+    lower_map = {k.lower().strip(): v for k, v in row.items()}
+    for key in keys:
+        if key in lower_map and lower_map[key].strip():
+            return lower_map[key].strip()
+    return ""
+
+
+def _parse_city_state(value: str) -> tuple[str, str]:
+    if "," in value:
+        parts = value.split(",", 1)
+        return parts[0].strip(), parts[1].strip().upper()[:2]
+    return value.strip(), "XX"
+
+
+def _parse_csv(csv_text: str, default_equipment: str) -> list[dict[str, Any]]:
+    loads: list[dict[str, Any]] = []
+    reader = csv.DictReader(io.StringIO(csv_text))
+    if not reader.fieldnames:
+        return loads
+    for row in reader:
+        origin_raw = _csv_field(row, _CSV_ORIGIN_KEYS)
+        dest_raw = _csv_field(row, _CSV_DEST_KEYS)
+        if not origin_raw or not dest_raw:
+            continue
+        origin_city, origin_state = _parse_city_state(origin_raw)
+        dest_city, dest_state = _parse_city_state(dest_raw)
+        miles_str = _csv_field(row, _CSV_MILES_KEYS).replace(",", "")
+        rate_str = _csv_field(row, _CSV_RATE_KEYS).replace("$", "").replace(",", "")
+        try:
+            miles = int(float(miles_str)) if miles_str else 0
+            rate = float(rate_str) if rate_str else 0.0
+        except ValueError:
+            continue
+        if miles <= 0 or rate <= 0:
+            continue
+        equip = _csv_field(row, ("equipment", "equip", "trailer")) or default_equipment
+        loads.append(
+            {
+                "origin_city": origin_city,
+                "origin_state": origin_state,
+                "dest_city": dest_city,
+                "dest_state": dest_state,
+                "miles": miles,
+                "rate": rate,
+                "equipment": equip,
+                "commodity": _csv_field(row, ("commodity", "freight")) or "General freight",
+            }
+        )
+    return loads
 
 
 def _regex_parse(raw_text: str, default_equipment: str) -> list[dict[str, Any]]:
@@ -235,12 +348,16 @@ async def _analyze_loads(
     results.sort(key=lambda x: x.get("composite_score", 0), reverse=True)
     insight = _build_insight(results)
     winner = results[0].get("load_id") if results else None
+    warning, pickup_cities, nearest_mi = _location_context(driver_lat, driver_lng, parsed)
 
     return ImportAnalyzeResponse(
         loads=results,
         parsed_count=len(parsed),
         insight=insight,
         winner_load_id=winner,
+        location_warning=warning,
+        pickup_cities=pickup_cities,
+        nearest_pickup_miles=nearest_mi,
     )
 
 
@@ -360,3 +477,70 @@ async def compare_two_loads(request: CompareTextRequest, req: Request) -> Import
         raise HTTPException(status_code=422, detail="Could not parse two loads — try clearer format")
 
     return await _analyze_loads(parsed[:2], request.driver_lat, request.driver_lng, request.equipment, cost_overrides, request_id)
+
+
+@router.post("/csv", response_model=ImportAnalyzeResponse)
+async def parse_csv_import(request: CsvImportRequest, req: Request) -> ImportAnalyzeResponse:
+    """Parse CSV load export and rank by true net profit."""
+    request_id = req.headers.get("X-Request-ID")
+    cost_overrides = await get_cost_overrides(req)
+    parsed = _normalize_parsed(_parse_csv(request.csv_text, request.equipment), request.equipment)
+    if not parsed:
+        raise HTTPException(
+            status_code=422,
+            detail="No loads in CSV — use columns: origin, destination, miles, rate",
+        )
+    return await _analyze_loads(
+        parsed, request.driver_lat, request.driver_lng, request.equipment, cost_overrides, request_id
+    )
+
+
+def _carrier_id(req: Request) -> str:
+    return getattr(req.state, "carrier_id", None) or "default"
+
+
+@router.post("/history")
+async def save_history(body: SaveHistoryRequest, req: Request) -> dict[str, int]:
+    pool = await get_pool()
+    try:
+        history_id = await save_import_history(
+            pool,
+            _carrier_id(req),
+            body.driver_city,
+            body.driver_state,
+            body.equipment,
+            body.parsed_count,
+            body.insight,
+            body.loads,
+            body.raw_preview,
+        )
+        return {"id": history_id}
+    except Exception as exc:
+        if "import_history" in str(exc):
+            raise HTTPException(status_code=503, detail="Run: make db-migrate-import") from exc
+        raise
+
+
+@router.get("/history")
+async def list_history(req: Request, limit: int = 20) -> list[dict[str, Any]]:
+    pool = await get_pool()
+    try:
+        return await list_import_history(pool, _carrier_id(req), limit)
+    except Exception as exc:
+        if "import_history" in str(exc):
+            return []
+        raise
+
+
+@router.get("/history/{history_id}")
+async def get_history_item(history_id: int, req: Request) -> dict[str, Any]:
+    pool = await get_pool()
+    try:
+        item = await get_import_history(pool, _carrier_id(req), history_id)
+    except Exception as exc:
+        if "import_history" in str(exc):
+            raise HTTPException(status_code=503, detail="Run: make db-migrate-import") from exc
+        raise
+    if not item:
+        raise HTTPException(status_code=404, detail="Import not found")
+    return item

@@ -33,11 +33,14 @@ DeadMile AI is an **AI agent** that recommends the most profitable loads by calc
 ### Key Differentiators
 
 - **Net profit, not gross rate** — full P&L for every load recommendation
+- **Paste & analyze** — import loads from any load board (text, CSV, screenshot) at `/import`
+- **Load Showdown** — public compare tool at `/compare` (shareable, no login)
+- **100% free** — no subscription, no usage limits
 - **Destination market scoring** — knows which cities have freight and which are dead ends
 - **Multi-hop load chaining** — optimizes 3-5 load sequences for maximum weekly earnings
-- **Rate prediction** — XGBoost model forecasts lane rate trends
-- **Driver memory** — learns driver preferences over time
-- **Real-time fuel prices** — Tavily integration for current diesel costs
+- **Fleet cost profiles** — your fuel, MPG, and driver pay personalize every calculation
+- **Google / email login** — NextAuth with onboarding and per-driver profiles
+- **PWA** — install on mobile from the browser
 
 ## 🏗️ Architecture
 

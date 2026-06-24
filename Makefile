@@ -94,6 +94,11 @@ db-migrate-auth: ## Apply auth schema (user accounts)
 	$(COMPOSE) exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -f /docker-entrypoint-initdb.d/004_auth.sql
 	@echo "Auth schema ready."
 
+db-migrate-import: ## Apply import history schema
+	@echo "Applying import history migration..."
+	$(COMPOSE) exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -f /docker-entrypoint-initdb.d/005_import_history.sql
+	@echo "Import history schema ready."
+
 test-ingestion: ## Run load-ingestion unit tests
 	cd services/load-ingestion && pip install -q -r requirements.txt && PYTHONPATH="../../:." pytest tests/ -v
 

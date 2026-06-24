@@ -1,161 +1,119 @@
 # DeadMile AI — Production Deployment Guide
 
-This guide turns DeadMile from a demo stack into a **deployable product foundation**. Full SaaS (billing, multi-tenant auth, live DAT feeds) is Phase 2 — this doc covers what is implemented today and how to run it in production.
+DeadMile is a **free, production-deployable** load optimization app for owner-operators. This doc covers what's implemented and how to run it.
 
 ---
 
-## What “production-ready” means in this repo
+## What's implemented today
 
 | Capability | Status |
 |------------|--------|
-| Per-fleet cost profile (fuel, CPM, fees, MPG) | ✅ `/carrier/profile` + Fleet Settings UI |
+| Per-fleet cost profile (fuel, CPM, fees, MPG) | ✅ `/carrier/profile` + Fleet Settings |
 | Profitability uses fleet costs | ✅ Passed to profitability engine |
-| API key auth (optional) | ✅ `API_GATEWAY_KEY` + `X-API-Key` header |
-| No fake data on API failure | ✅ `NEXT_PUBLIC_APP_MODE=production` |
+| **Load import** (paste, CSV, screenshot) | ✅ `/import` + GPT-4o parsing |
+| **Load compare** (public share link) | ✅ `/compare` |
+| **User auth** (Google + email) | ✅ NextAuth.js |
+| **Import history** (saved analyses) | ✅ `import_history` table |
+| **PWA** (installable mobile web) | ✅ manifest + service worker |
+| API key auth (optional) | ✅ `API_GATEWAY_KEY` |
+| No mock data on API failure | ✅ `NEXT_PUBLIC_APP_MODE=production` |
 | Search audit trail | ✅ `search_audit` table |
-| Live load board (DAT/Truckstop) | ❌ Phase 2 — plug in via load ingestion |
-| User login / multi-tenant | ❌ Phase 2 |
-| Mobile app | ❌ Phase 2 — responsive web works today |
+| Live load board (DAT/Truckstop API) | ❌ Future — use Import paste today |
+| Real routing miles (PCMiler/HERE) | ❌ Future — uses geodesic estimates |
 
 ---
 
-## 1. Run database migration (required once)
-
-On existing databases, apply production tables:
+## Database migrations (run once per environment)
 
 ```bash
-make db-migrate-prod
+make db-migrate-prod      # carrier profiles, audit
+make db-migrate-auth      # user signup counter
+make db-migrate-import    # saved import analyses
 ```
-
-This creates:
-
-- `carrier_profiles` — your fleet’s real operating costs  
-- `api_keys` — for future hashed key storage  
-- `search_audit` — logs every load search  
 
 ---
 
-## 2. Configure production environment
+## Auth setup
 
-Copy and edit `.env`:
-
-```bash
-cp .env.example .env
+```env
+NEXTAUTH_SECRET=openssl-rand-hex-32
+NEXTAUTH_URL=https://your-domain.com
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
 ```
 
-**Critical production variables:**
+Google OAuth redirect URI: `https://your-domain.com/api/auth/callback/google`
+
+Email login works **without** Google credentials for development.
+
+Per-user fleet profiles use `X-Carrier-Id` (set automatically after login).
+
+---
+
+## Import API
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /import/parse` | Paste load board text |
+| `POST /import/csv` | CSV with origin, destination, miles, rate |
+| `POST /import/screenshot` | PNG/JPG via GPT-4o vision |
+| `POST /import/compare` | Two-load showdown (public) |
+| `POST /import/history` | Save analysis |
+| `GET /import/history` | List recent saves |
+
+Requires `OPENAI_API_KEY` for best parsing (regex fallback for text).
+
+---
+
+## Production environment
 
 ```env
 ENVIRONMENT=production
-API_GATEWAY_KEY=your-long-random-secret-here
-POSTGRES_PASSWORD=strong-password-here
+API_GATEWAY_KEY=your-long-random-secret
 NEXT_PUBLIC_APP_MODE=production
-
-# Set at Docker BUILD time for frontend:
 NEXT_PUBLIC_API_URL=https://your-domain.com/api
 ```
 
-Generate an API key:
-
 ```bash
-openssl rand -hex 32
-```
-
----
-
-## 3. Fleet Settings (drivers / dispatchers)
-
-1. Open **Fleet Settings** in the nav (or `/settings`)
-2. Enter your real numbers:
-   - Fuel $/gal, driver $/mi, insurance, maintenance, tolls
-   - Dispatch & factoring %
-   - Loaded / empty MPG
-3. Click **Save Fleet Profile**
-
-All load searches and net profit calculations now use **your costs**, not industry defaults.
-
-In production mode, paste your `API_GATEWAY_KEY` in the settings page (stored in browser localStorage).
-
----
-
-## 4. Deploy with Docker
-
-```bash
-# Full stack (ingestion, Kafka, Temporal, monitoring)
 make demo
-
-# Apply production schema
-make db-migrate-prod
-
-# Seed loads (after placing data in data/text/)
+make db-migrate-prod && make db-migrate-auth && make db-migrate-import
 make seed
-make seed-vectors
-make train-models
-```
-
-**Recommended production topology:**
-
-- Put **Nginx** (port 8888) in front — TLS termination at your load balancer  
-- Do **not** expose Postgres/Redis/Kafka ports publicly  
-- Set strong passwords for Postgres, MinIO, Grafana  
-- Rotate `OPENAI_API_KEY` and `API_GATEWAY_KEY` regularly  
-
----
-
-## 5. API authentication
-
-When `API_GATEWAY_KEY` is set, all routes except `/health` require:
-
-```http
-X-API-Key: your-long-random-secret-here
-```
-
-Example:
-
-```bash
-curl -H "X-API-Key: $API_GATEWAY_KEY" \
-  http://localhost:8010/carrier/profile
+docker compose build frontend api-gateway profitability-engine
+docker compose up -d frontend api-gateway profitability-engine
 ```
 
 ---
 
-## 6. Roadmap to full product (Phase 2)
+## Fleet Settings
 
-Priority order for a real commercial launch:
+1. Sign in → complete onboarding (or skip)
+2. Open **Fleet Settings** (`/settings`)
+3. Enter real fuel $/gal, driver $/mi, MPG, insurance
+4. Set **home base** — used as default location on Import
 
-1. **Live load feed** — DAT, Truckstop, or broker API → replace synthetic `data/text`  
-2. **Real routing** — PCMiler / HERE for miles and tolls  
-3. **OAuth / fleet accounts** — Supabase Auth, Auth0, or Cognito  
-4. **Multi-carrier tenants** — carrier_id per organization  
-5. **Book load workflow** — rate con, broker contact, HOS check  
-6. **Mobile PWA** — installable, offline location cache  
-7. **Billing** — Stripe per truck/month  
+Banner reminds users still on default costs.
 
 ---
 
-## 7. Monitoring
+## Roadmap (still free — no Stripe)
 
-| Service | URL |
-|---------|-----|
-| Grafana | http://localhost:3001 |
-| Prometheus | http://localhost:9090 |
-| API metrics | http://localhost:8010/metrics |
-| Temporal UI | http://localhost:8081 |
-
-Set alerts on: API error rate, agent latency, Postgres connections, Redis memory.
+1. **Real routing miles** — PCMiler / HERE  
+2. **Live load feed** — DAT / Truckstop API  
+3. **Book load workflow** — rate con, HOS  
+4. **Offline import cache** — PWA enhancement  
 
 ---
 
-## 8. Support checklist before going live with a fleet
+## Pre-launch checklist
 
-- [ ] `make db-migrate-prod` run on production DB  
-- [ ] Fleet profile saved with real costs  
-- [ ] `ENVIRONMENT=production` and `NEXT_PUBLIC_APP_MODE=production`  
-- [ ] `API_GATEWAY_KEY` set and distributed to users  
-- [ ] Postgres password changed from default  
-- [ ] OpenAI / map keys in secrets manager, not in git  
-- [ ] Loads seeded or live feed connected  
-- [ ] Test: Dry Van search → change to Reefer → Update Search  
+- [ ] All migrations run (`prod`, `auth`, `import`)
+- [ ] `NEXTAUTH_URL` matches public domain
+- [ ] Google OAuth redirect configured
+- [ ] Fleet profile tested with real costs
+- [ ] Import tested with pasted DAT text
+- [ ] `OPENAI_API_KEY` in secrets manager
+- [ ] Postgres password rotated from default
+- [ ] `.env` never committed to git
 
 ---
 

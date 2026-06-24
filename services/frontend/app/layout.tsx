@@ -1,5 +1,6 @@
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import { FleetCostBanner } from "@/components/FleetCostBanner";
 import { Navbar } from "@/components/nav/Navbar";
 import { StatusBar } from "@/components/nav/StatusBar";
 import { Providers } from "@/components/providers/Providers";
@@ -30,6 +31,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           <ServiceWorkerRegister />
           <Navbar />
+          <FleetCostBanner />
           <main className="flex-1">{children}</main>
           <StatusBar />
         </Providers>
