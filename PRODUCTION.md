@@ -1,5 +1,7 @@
 # DeadMile AI — Production Deployment Guide
 
+> **Full public deploy guide:** see [DEPLOY.md](./DEPLOY.md) for VPS, HTTPS, OSRM routing, and live load sync.
+
 DeadMile is a **free, production-deployable** load optimization app for owner-operators. This doc covers what's implemented and how to run it.
 
 ---
@@ -18,8 +20,8 @@ DeadMile is a **free, production-deployable** load optimization app for owner-op
 | API key auth (optional) | ✅ `API_GATEWAY_KEY` |
 | No mock data on API failure | ✅ `NEXT_PUBLIC_APP_MODE=production` |
 | Search audit trail | ✅ `search_audit` table |
-| Live load board (DAT/Truckstop API) | ❌ Future — use Import paste today |
-| Real routing miles (PCMiler/HERE) | ❌ Future — uses geodesic estimates |
+| Live load board (DAT/Truckstop API) | ✅ Webhook + sync API — see DEPLOY.md |
+| Real routing miles (PCMiler/HERE) | ✅ OSRM (free) — optional OpenRouteService |
 
 ---
 

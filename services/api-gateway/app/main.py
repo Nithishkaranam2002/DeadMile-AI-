@@ -21,6 +21,7 @@ from app.routers.carrier import router as carrier_router
 from app.routers.chain import router as chain_router
 from app.routers.dashboard import router as dashboard_router
 from app.routers.health import router as health_router
+from app.routers.live_feed import router as live_feed_router
 from app.routers.loads import router as loads_router
 from app.routers.markets import router as markets_router
 from app.routers.recommend import router as recommend_router
@@ -61,6 +62,7 @@ app.add_middleware(MetricsMiddleware)
 
 app.include_router(health_router)
 app.include_router(loads_router)
+app.include_router(live_feed_router)
 app.include_router(recommend_router)
 app.include_router(markets_router)
 app.include_router(simulate_router)

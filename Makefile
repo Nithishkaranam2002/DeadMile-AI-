@@ -99,6 +99,18 @@ db-migrate-import: ## Apply import history schema
 	$(COMPOSE) exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -f /docker-entrypoint-initdb.d/005_import_history.sql
 	@echo "Import history schema ready."
 
+db-migrate-live: ## Apply live load feed schema
+	@echo "Applying live feed migration..."
+	$(COMPOSE) exec -T postgres psql -U $(POSTGRES_USER) -d $(POSTGRES_DB) -f /docker-entrypoint-initdb.d/006_live_feed.sql
+	@echo "Live feed schema ready."
+
+prod-up: ## Production stack (core services + nginx, no Kafka)
+	docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build \
+		postgres redis qdrant api-gateway profitability-engine market-intelligence agent-core frontend nginx
+
+sync-live: ## Pull loads from LIVE_LOAD_API_URL
+	python3 scripts/sync_live_loads.py
+
 test-ingestion: ## Run load-ingestion unit tests
 	cd services/load-ingestion && pip install -q -r requirements.txt && PYTHONPATH="../../:." pytest tests/ -v
 

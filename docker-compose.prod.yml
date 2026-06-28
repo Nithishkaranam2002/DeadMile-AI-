@@ -1,0 +1,45 @@
+# Production overrides — use with:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d \
+#     postgres redis qdrant api-gateway profitability-engine market-intelligence \
+#     agent-core frontend nginx
+
+services:
+  postgres:
+    ports: []  # do not expose DB publicly
+
+  redis:
+    ports: []
+
+  api-gateway:
+    environment:
+      ENVIRONMENT: production
+      ROUTING_PROVIDER: ${ROUTING_PROVIDER:-osrm}
+      OSRM_URL: ${OSRM_URL:-https://router.project-osrm.org}
+      LIVE_LOAD_API_URL: ${LIVE_LOAD_API_URL:-}
+      LIVE_LOAD_API_KEY: ${LIVE_LOAD_API_KEY:-}
+      LIVE_LOAD_WEBHOOK_SECRET: ${LIVE_LOAD_WEBHOOK_SECRET:-}
+
+  profitability-engine:
+    environment:
+      ENVIRONMENT: production
+      ROUTING_PROVIDER: ${ROUTING_PROVIDER:-osrm}
+      OSRM_URL: ${OSRM_URL:-https://router.project-osrm.org}
+      ROUTING_ENABLED: ${ROUTING_ENABLED:-true}
+      RECALC_LOADED_MILES: ${RECALC_LOADED_MILES:-false}
+
+  frontend:
+    environment:
+      NEXT_PUBLIC_APP_MODE: production
+      NEXTAUTH_URL: ${NEXTAUTH_URL:-http://localhost}
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+
+  nginx:
+    profiles: []
+    ports:
+      - "${NGINX_PORT:-80}:80"
+
+  agent-core:
+    environment:
+      ENVIRONMENT: production

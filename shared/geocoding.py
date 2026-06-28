@@ -171,7 +171,7 @@ def geocode_city(city: str, state: str) -> tuple[float, float]:
     key = f"{city}, {state}"
     if key in CITY_COORDINATES:
         return CITY_COORDINATES[key]
-  # Try without normalizing spaces in multi-word cities
+    # Try without normalizing spaces in multi-word cities
     for known_key, coords in CITY_COORDINATES.items():
         known_city, known_state = known_key.rsplit(", ", 1)
         if known_state == state and known_city.lower() == city.lower():

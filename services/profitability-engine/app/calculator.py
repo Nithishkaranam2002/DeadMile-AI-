@@ -46,8 +46,11 @@ class ProfitabilityCalculator:
         pickup_lng: float,
         equipment: str,
         fuel_price: float,
+        miles_override: Optional[float] = None,
     ) -> DeadheadInfo:
-        miles = road_distance_estimate(driver_lat, driver_lng, pickup_lat, pickup_lng)
+        miles = miles_override if miles_override is not None else road_distance_estimate(
+            driver_lat, driver_lng, pickup_lat, pickup_lng
+        )
         fuel_mod = c.EQUIPMENT_FUEL_MODIFIER.get(equipment, 1.0)
         gallons = (miles / self.settings.avg_mpg_empty) * fuel_mod
         fuel_cost = gallons * fuel_price
@@ -140,6 +143,8 @@ class ProfitabilityCalculator:
         fuel_price_override: Optional[float] = None,
         destination_market_score: Optional[float] = None,
         deadhead_from_delivery: Optional[float] = None,
+        deadhead_to_miles: Optional[float] = None,
+        loaded_miles_override: Optional[int] = None,
     ) -> ProfitBreakdown:
         fuel_price = fuel_price_override or self.settings.fuel_price_per_gallon
 
@@ -152,7 +157,8 @@ class ProfitabilityCalculator:
         dest_lng = load.dest_lng or pickup_lng
 
         deadhead_to = self.calculate_deadhead_to_pickup(
-            driver_lat, driver_lng, pickup_lat, pickup_lng, load.equipment, fuel_price
+            driver_lat, driver_lng, pickup_lat, pickup_lng, load.equipment, fuel_price,
+            miles_override=deadhead_to_miles,
         )
         deadhead_from = deadhead_from_delivery
         if deadhead_from is None:
@@ -165,7 +171,7 @@ class ProfitabilityCalculator:
                 destination_market_score,
             )
 
-        loaded_miles = load.miles
+        loaded_miles = loaded_miles_override if loaded_miles_override is not None else load.miles
         total_miles = loaded_miles + deadhead_to.miles + deadhead_from
 
         fuel_breakdown = self.calculate_fuel_cost(

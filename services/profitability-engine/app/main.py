@@ -10,6 +10,7 @@ from fastapi import FastAPI, HTTPException
 from prometheus_client import make_asgi_app
 from pydantic import BaseModel, Field
 
+from app.routing_service import deadhead_road_miles, loaded_lane_miles, set_routing_cache
 from app.batch import BatchCalculator
 from app.calculator import ProfitabilityCalculator
 from shared.models import LoadRecord
@@ -35,6 +36,16 @@ batch_calculator = BatchCalculator(calculator)
 cache = CacheManager(settings.redis_url)
 
 PROFIT_CACHE_TTL = 900  # 15 minutes
+
+
+async def _routing_for_load(load, driver_lat: float, driver_lng: float) -> tuple[float, int]:
+    pickup_lat = load.origin_lat or driver_lat
+    pickup_lng = load.origin_lng or driver_lng
+    dest_lat = load.dest_lat or pickup_lat
+    dest_lng = load.dest_lng or pickup_lng
+    deadhead_to, _ = await deadhead_road_miles(driver_lat, driver_lng, pickup_lat, pickup_lng)
+    loaded_miles, _ = await loaded_lane_miles(pickup_lat, pickup_lng, dest_lat, dest_lng, load.miles)
+    return deadhead_to, loaded_miles
 
 
 class CostOverrides(BaseModel):
@@ -100,6 +111,7 @@ class AdHocCalculateRequest(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await cache.connect()
+    set_routing_cache(cache)
     logger.info("profitability_engine_started")
     yield
     await cache.close()
@@ -160,6 +172,7 @@ async def calculate_single(req: CalculateRequest) -> ProfitBreakdown:
 
     overrides = req.cost_overrides.model_dump(exclude_none=True) if req.cost_overrides else None
     calc = ProfitabilityCalculator(settings=merge_cost_settings(overrides))
+    deadhead_to, loaded_miles = await _routing_for_load(load, req.driver_lat, req.driver_lng)
 
     breakdown = calc.calculate(
         load,
@@ -168,6 +181,8 @@ async def calculate_single(req: CalculateRequest) -> ProfitBreakdown:
         fuel_price_override=req.fuel_price_override,
         destination_market_score=dest_score,
         deadhead_from_delivery=deadhead_from,
+        deadhead_to_miles=deadhead_to,
+        loaded_miles_override=loaded_miles,
     )
     await cache.set(cache_key, breakdown.model_dump(mode="json"), ttl=PROFIT_CACHE_TTL)
     return breakdown
@@ -205,6 +220,7 @@ async def calculate_ad_hoc(req: AdHocCalculateRequest) -> ProfitBreakdown:
 
     overrides = req.cost_overrides.model_dump(exclude_none=True) if req.cost_overrides else None
     calc = ProfitabilityCalculator(settings=merge_cost_settings(overrides))
+    deadhead_to, loaded_miles = await _routing_for_load(load, req.driver_lat, req.driver_lng)
 
     return calc.calculate(
         load,
@@ -213,6 +229,8 @@ async def calculate_ad_hoc(req: AdHocCalculateRequest) -> ProfitBreakdown:
         fuel_price_override=req.fuel_price_override,
         destination_market_score=dest_score,
         deadhead_from_delivery=deadhead_from,
+        deadhead_to_miles=deadhead_to,
+        loaded_miles_override=loaded_miles,
     )
 
 
