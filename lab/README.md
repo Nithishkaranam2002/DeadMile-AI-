@@ -74,3 +74,51 @@ the routes by `dmlab/routing/feasibility.py` and `metrics.py`.
   haversine straight-line km on stop coordinates, not road distance.
   Assumptions: 2 vans per route with the route's capacity, 10 h shift.
   Subset and selection rule: `configs/amazon_subset.yaml`.
+
+## Evaluation harness (Module 2)
+
+```
+cd lab
+uv run dmlab-harness make-splits          # done once (seed 20261030); refuses to run again
+uv run dmlab-harness register-champion    # routing-solver v1 = default PyVRP config, @champion
+uv run dmlab-harness compare --candidate ortools --suite quick
+caffeinate -i uv run dmlab-harness compare --candidate ortools --suite full    # ~25 min
+caffeinate -i uv run dmlab-harness selfcheck --suite full                      # ~40 min
+```
+
+* **Splits** (`configs/suites.yaml`, frozen and committed): thirds per Solomon
+  class and per Amazon city, leftovers to validation then test. Solomon
+  16 / 20 / 20, Amazon 12 / 14 / 14 (tune / validation / test).
+* **Suites**: quick = 10 validation instances (1 per Solomon class, 2 per
+  city), seeds 1-2, 5 s. Full = every instance of a split, seeds 1-5, 30 s.
+  Seeds 6-10 are used only by the A/A self check.
+* **Seeds**: seeded solvers (PyVRP) run every seed and are averaged per
+  instance. Solvers without a seed (OR Tools, nearest neighbor) run once per
+  instance.
+* **Statistics** (`dmlab/harness/stats.py`): r = (champion - candidate) /
+  champion per instance, so r > 0 means the candidate is better. Wilcoxon
+  signed rank on r (exact ties dropped and counted), and a seeded bootstrap 95%
+  CI of the median r. Instances where either solver was infeasible on any run
+  are listed as not compared.
+* **Report card**: `report_card.md` and `report_card.json` on the compare run
+  in MLflow experiment `harness`. The card covers wins, losses and ties in
+  plain words, the statistics, a table per slice and the labels. The compare
+  run is the parent of two evaluation runs, and each evaluation run is the
+  parent of one solve run per instance and seed.
+* **Registry**: model `routing-solver`, aliases `@champion` and
+  `@challenger`. `register-champion` only works while no champion exists.
+  Moving the champion is left to the promotion gate with human approval
+  (Module 4).
+* **Test split**: only `dmlab/safeguards/test_split.py` (the gate code path)
+  can read it. `tests/test_test_split_guard.py` proves this statically and at
+  runtime. The CLI only accepts `--split tune|validation`.
+* **Self checks**: A/A (champion seeds 1-5 vs 6-10) must not show a
+  significant improvement (one sided p >= 0.05). OR Tools vs champion must
+  show the champion better (median r < 0, CI upper bound < 0, one sided
+  p < 0.05). A failed check means a harness bug. It is never rerun with other
+  seeds.
+* **Workers**: the default is 5, the number of performance cores on the lab
+  Mac. Under a fixed time limit, a run on an efficiency core gets fewer
+  iterations, which adds noise to the comparison.
+* `LocalRunner` uses a process pool. A `TemporalRunner` can be added later
+  with the same `SolveTask` / `TaskOutcome` contract (`dmlab/harness/runners.py`).

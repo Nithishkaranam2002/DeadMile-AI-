@@ -357,6 +357,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyvrp" },
     { name = "pyyaml" },
+    { name = "scipy" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "vrplib" },
 ]
@@ -378,6 +379,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.14,<3" },
     { name = "pyvrp", specifier = "==0.14.1" },
     { name = "pyyaml", specifier = ">=6.0.3,<7" },
+    { name = "scipy", specifier = ">=1.18,<2" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.54,<1" },
     { name = "vrplib", specifier = "==2.2.0" },
 ]

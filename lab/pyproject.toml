@@ -13,6 +13,7 @@ dependencies = [
     "pydantic>=2.14,<3",
     "pyvrp==0.14.1",
     "pyyaml>=6.0.3,<7",
+    "scipy>=1.18,<2",
     "uvicorn[standard]>=0.54,<1",
     "vrplib==2.2.0",
 ]
@@ -20,6 +21,7 @@ dependencies = [
 [project.scripts]
 dmlab-data = "dmlab.cli.data:main"
 dmlab-route = "dmlab.cli.route:main"
+dmlab-harness = "dmlab.cli.harness:main"
 
 [dependency-groups]
 dev = [

@@ -17,6 +17,13 @@ from dmlab.routing.solver import Solver
 class PyVRPSolver(Solver):
     name = "pyvrp"
 
+    def __init__(self, **params: Any) -> None:
+        # Search settings are not wired yet (parameter variants come with the
+        # agent). Refuse them so a variant can never silently run as default.
+        if params:
+            raise ValueError(f"PyVRPSolver takes no parameters yet, got {sorted(params)}")
+        super().__init__()
+
     def _solve(
         self, inst: ProblemInstance, time_limit_s: float, seed: int
     ) -> tuple[list[list[int]], bool, str, dict[str, Any]]:

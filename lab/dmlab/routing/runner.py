@@ -1,16 +1,15 @@
 """Run solvers on instances and log every run to MLflow.
 
-Solving happens in worker processes. Each worker loads the instance, solves,
-then runs our feasibility checker and metrics on the returned routes. The
+Solving happens in worker processes (dmlab.harness.runners.LocalRunner). Each
+worker loads the instance, solves, then runs our feasibility checker and
+metrics on the returned routes. The
 parent process does all MLflow logging: one parent run per batch, one child
 run per (solver, instance, seed).
 """
 
 import json
 import random
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass
-from multiprocessing import get_context
 from pathlib import Path
 from typing import Any
 
@@ -115,12 +114,15 @@ def run_task(
     }
 
 
-def _log_child(payload: dict[str, Any], campaign: str, git: dict[str, Any]) -> str:
+def log_solve_run(
+    payload: dict[str, Any], campaign: str, git: dict[str, Any], module: str = "1"
+) -> str:
+    """Log one solve as an MLflow run, nested under the active run."""
     inst, res, rep, m = (payload[k] for k in ("instance", "result", "report", "metrics"))
     units = inst["units"]
     tags = {
         "run_kind": "solve",
-        "dmlab_module": "1",
+        "dmlab_module": module,
         "campaign": campaign,
         "solver": res["solver"],
         "instance": inst["name"],
@@ -226,35 +228,36 @@ def run_batch(
         if git["dirty"]:
             mlflow.log_text("\n".join(git["changed_files"]), "git_changed_files.txt")
         print(f"MLflow: {uri}, experiment {EXPERIMENT}, {len(tasks)} runs, {workers} workers")
-        with ProcessPoolExecutor(max_workers=workers, mp_context=get_context("spawn")) as pool:
-            futures = {
-                pool.submit(run_task, s, solver_params.get(s, {}), ref, time_limit_s, seed): (
-                    s,
-                    ref,
-                )
-                for s, ref in tasks
-            }
-            for i, fut in enumerate(as_completed(futures), start=1):
-                s, ref = futures[fut]
-                try:
-                    payload = fut.result()
-                except Exception as exc:  # a crash is logged, never hidden
-                    print(f"[{i}/{len(tasks)}] {s} {Path(ref.path).stem}: ERROR {exc!r}")
-                    summaries.append({"solver": s, "instance": ref.path, "error": repr(exc)})
-                    continue
-                _log_child(payload, campaign, git)
-                m = payload["metrics"]
-                gap = m["gap_to_bks_pct"]
-                print(
-                    f"[{i}/{len(tasks)}] {s:8s} {payload['instance']['name'][:12]:12s} "
-                    f"feasible={m['feasible']!s:5s} dist={m['total_distance']:.1f} "
-                    f"veh={m['vehicles_used']} "
-                    + (f"gap={gap:.2f}% " if gap is not None else "")
-                    + f"t={m['runtime_s']:.1f}s"
-                )
-                summaries.append(
-                    {"solver": s, "instance": payload["instance"]["name"], "metrics": m}
-                )
+        from dmlab.harness.runners import LocalRunner, SolverConfig, SolveTask
+
+        solve_tasks = [
+            SolveTask(
+                group=s,
+                config=SolverConfig(solver=s, params=solver_params.get(s, {})),
+                ref=ref,
+                seed=seed,
+                time_limit_s=time_limit_s,
+            )
+            for s, ref in tasks
+        ]
+        for i, out in enumerate(LocalRunner(workers).run(solve_tasks), start=1):
+            s, ref = out.task.config.solver, out.task.ref
+            if out.error is not None:
+                print(f"[{i}/{len(tasks)}] {s} {Path(ref.path).stem}: ERROR {out.error}")
+                summaries.append({"solver": s, "instance": ref.path, "error": out.error})
+                continue
+            payload = out.payload
+            log_solve_run(payload, campaign, git)
+            m = payload["metrics"]
+            gap = m["gap_to_bks_pct"]
+            print(
+                f"[{i}/{len(tasks)}] {s:8s} {payload['instance']['name'][:12]:12s} "
+                f"feasible={m['feasible']!s:5s} dist={m['total_distance']:.1f} "
+                f"veh={m['vehicles_used']} "
+                + (f"gap={gap:.2f}% " if gap is not None else "")
+                + f"t={m['runtime_s']:.1f}s"
+            )
+            summaries.append({"solver": s, "instance": payload["instance"]["name"], "metrics": m})
         errors = sum(1 for x in summaries if "error" in x)
         mlflow.log_metric("errors", errors)
         mlflow.log_text(json.dumps(summaries, indent=1, default=str), "batch_summary.json")
