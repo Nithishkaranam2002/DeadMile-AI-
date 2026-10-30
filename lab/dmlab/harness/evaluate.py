@@ -11,10 +11,14 @@ seed (OR Tools, nearest neighbor) run once per instance, with the first seed
 logged as unused.
 
 Reuse: a spec with ``reuse=True`` (only ever the champion config) first looks
-up matching earlier solve runs in MLflow (see reuse.py) and runs only what is
-missing. Reused runs are marked on every result and counted on the card.
+up matching earlier solve runs in MLflow by solver fingerprint (see reuse.py
+and fingerprint.py) and runs only what is missing. Reused runs are marked on
+every result and counted on the card. ``audit_reuse=K`` re-solves K of the
+reused runs (seeded choice) and records how they compare, as a check that the
+fingerprint misses nothing; audit runs never enter the statistics.
 """
 
+import random
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -23,7 +27,8 @@ import mlflow
 from pydantic import BaseModel
 
 from dmlab.data.solomon import solomon_class
-from dmlab.harness.reuse import TAG_INSTANCE, find_reusable, reuse_tags
+from dmlab.harness.fingerprint import fingerprint
+from dmlab.harness.reuse import TAG_FINGERPRINT, TAG_INSTANCE, find_reusable, reuse_tags
 from dmlab.harness.runners import Runner, SolverConfig, SolveTask
 from dmlab.harness.splits import amazon_cities
 from dmlab.harness.suites import Suite
@@ -39,6 +44,7 @@ class EvalSpec(BaseModel):
     seeds: list[int]
     registry_ref: str | None = None  # e.g. "routing-solver v1 (@champion)"
     reuse: bool = False  # look up matching earlier runs in MLflow first
+    audit_reuse: int = 0  # re-solve this many reused runs as a check
 
 
 class InstanceRun(BaseModel):
@@ -82,6 +88,8 @@ class Evaluation(BaseModel):
     workers: int | None = None
     reused_runs: int = 0
     reused_run_ids: list[str] = []
+    fingerprint: str = ""
+    reuse_audit: list[dict[str, Any]] = []
 
 
 def seeds_for(config: SolverConfig, seeds: list[int]) -> tuple[list[int], str]:
@@ -144,9 +152,10 @@ def run_evaluations(
     if len(set(groups)) != len(groups):
         raise ValueError("evaluation groups must be unique")
     workers = getattr(runner, "workers", None)
-    reused = _lookup_reuse(specs, suite, git, workers)
+    fps = {s.group: fingerprint(s.config) for s in specs}
+    reused = _lookup_reuse(specs, suite, git, workers, {g: fp for g, (fp, _) in fps.items()})
     skip = {(g, inst, seed) for g, found in reused.items() for (inst, seed) in found}
-    tasks = plan_tasks(specs, suite, skip)
+    tasks = plan_tasks(specs, suite, skip) + _audit_tasks(specs, suite, reused)
     outcomes = defaultdict(list)
     print(
         f"{len(tasks)} solve tasks ({len(skip)} reused from MLflow), "
@@ -176,6 +185,7 @@ def run_evaluations(
             "group": spec.group,
             "solver": spec.config.solver,
             "config_key": spec.config.key(),
+            TAG_FINGERPRINT: fps[spec.group][0],
             "suite": suite.name,
             "split": suite.split,
             "suite_fingerprint": suite.fingerprint(),
@@ -197,10 +207,36 @@ def run_evaluations(
                     **{f"solver.{k}": v for k, v in spec.config.params.items()},
                 }
             )
-            extra = {"workers": workers, "time_limit_s": suite.time_limit_s}
+            mlflow.log_dict(fps[spec.group][1], "fingerprint.json")
+            extra = {
+                "workers": workers,
+                "time_limit_s": suite.time_limit_s,
+                "fingerprint": fps[spec.group][0],
+            }
             runs = [_instance_run(out, campaign, git, extra) for out in outcomes[spec.group]]
-            runs += [_from_mlflow(r) for r in reused.get(spec.group, {}).values()]
+            reused_runs = {key: _from_mlflow(r) for key, r in reused.get(spec.group, {}).items()}
+            runs += list(reused_runs.values())
             runs.sort(key=lambda r: (r.instance, r.seed))
+            audit = []
+            for out in outcomes[spec.group + AUDIT_SUFFIX]:
+                fresh = _instance_run(out, campaign, git, extra | {"audit": True})
+                old = reused_runs[(fresh.instance, fresh.seed)]
+                diff = (
+                    (fresh.total_distance - old.total_distance) / old.total_distance
+                    if fresh.total_distance is not None and old.total_distance
+                    else None
+                )
+                audit.append(
+                    {
+                        "instance": fresh.instance,
+                        "seed": fresh.seed,
+                        "reused_distance": old.total_distance,
+                        "fresh_distance": fresh.total_distance,
+                        "rel_diff": diff,
+                        "reused_run_id": old.run_id,
+                        "fresh_run_id": fresh.run_id,
+                    }
+                )
             ev = Evaluation(
                 group=spec.group,
                 config=spec.config,
@@ -216,6 +252,8 @@ def run_evaluations(
                 workers=workers,
                 reused_runs=sum(1 for r in runs if r.reused),
                 reused_run_ids=[r.run_id for r in runs if r.reused and r.run_id],
+                fingerprint=fps[spec.group][0],
+                reuse_audit=audit,
             )
             mlflow.log_metrics(
                 {
@@ -230,8 +268,40 @@ def run_evaluations(
     return evaluations
 
 
+AUDIT_SUFFIX = "__audit"
+
+
+def _audit_tasks(
+    specs: list[EvalSpec], suite: Suite, reused: dict[str, dict[tuple[str, int], Any]]
+) -> list[SolveTask]:
+    """Re-solve a seeded sample of reused runs, to check the fingerprint."""
+    refs = {_instance_name(r.path, r.kind): r for r in suite.refs}
+    tasks = []
+    for spec in specs:
+        keys = sorted(reused.get(spec.group, {}))
+        k = min(spec.audit_reuse, len(keys))
+        if k <= 0:
+            continue
+        rng = random.Random(f"audit:{suite.fingerprint()}:{spec.group}")
+        for name, seed in sorted(rng.sample(keys, k)):
+            tasks.append(
+                SolveTask(
+                    group=spec.group + AUDIT_SUFFIX,
+                    config=spec.config,
+                    ref=refs[name],
+                    seed=seed,
+                    time_limit_s=suite.time_limit_s,
+                )
+            )
+    return tasks
+
+
 def _lookup_reuse(
-    specs: list[EvalSpec], suite: Suite, git: dict[str, Any], workers: int | None
+    specs: list[EvalSpec],
+    suite: Suite,
+    git: dict[str, Any],
+    workers: int | None,
+    fps: dict[str, str],
 ) -> dict[str, dict[tuple[str, int], Any]]:
     """group -> {(instance, seed): earlier MLflow run} for specs with reuse on."""
     wanted_specs = [s for s in specs if s.reuse]
@@ -248,7 +318,7 @@ def _lookup_reuse(
         seeds, _ = seeds_for(spec.config, spec.seeds)
         wanted = {(name, s): v for name, v in versions.items() for s in seeds}
         out[spec.group] = find_reusable(
-            exp.experiment_id, spec.config, git, workers, suite.time_limit_s, wanted
+            exp.experiment_id, fps[spec.group], git, workers, suite.time_limit_s, wanted
         )
     return out
 
@@ -308,9 +378,13 @@ def _instance_run(
             error=out.error,
         )
     p = out.payload
-    tags = {"group": t.group}
+    tags = {"group": t.group, TAG_FINGERPRINT: extra["fingerprint"]}
+    if extra.get("audit"):
+        tags["harness_audit"] = "true"
     if extra["workers"] is not None:
-        tags |= reuse_tags(t.config, name, extra["workers"], extra["time_limit_s"])
+        tags |= reuse_tags(
+            t.config, extra["fingerprint"], name, extra["workers"], extra["time_limit_s"]
+        )
     run_id = log_solve_run(p, campaign, git, module=MODULE, extra_tags=tags)
     inst, m = p["instance"], p["metrics"]
     return InstanceRun(

@@ -80,12 +80,27 @@ def fairness(c: Comparison) -> list[str]:
         if side.reused_runs:
             notes.append(
                 f"{name}: {side.reused_runs} of {side.total_runs} solve runs were reused from "
-                "earlier MLflow runs with the same config, git commit (clean tree), instance, "
+                "earlier MLflow runs (clean tree) with the same solver fingerprint "
+                f"`{side.fingerprint}` (code, configs, solver config, environment), instance, "
                 "seed, time limit, data version and worker count, instead of being run again. "
                 "Reused runs ran at another time, under whatever else the machine was doing then."
             )
         else:
-            notes.append(f"{name}: all {side.total_runs} solve runs ran fresh for this comparison.")
+            notes.append(
+                f"{name}: all {side.total_runs} solve runs ran fresh for this comparison "
+                f"(solver fingerprint `{side.fingerprint}`)."
+            )
+        if side.reuse_audit:
+            diffs = [a["rel_diff"] for a in side.reuse_audit if a["rel_diff"] is not None]
+            exact = sum(1 for d in diffs if d == 0)
+            worst = max((abs(d) for d in diffs), default=None)
+            notes.append(
+                f"Reuse audit ({name.lower()}): {len(side.reuse_audit)} reused runs were solved "
+                f"again; {exact} matched exactly"
+                + (f", the largest difference was {100 * worst:.3f}%" if worst else "")
+                + ". A clear difference would mean the fingerprint misses something that "
+                "changes results (small differences can come from machine load)."
+            )
     return notes
 
 

@@ -83,6 +83,7 @@ uv run dmlab-harness make-splits          # done once (seed 20261030); refuses t
 uv run dmlab-harness register-champion    # routing-solver v1 = default PyVRP config, @champion
 uv run dmlab-harness compare --candidate ortools --suite quick
 caffeinate -i uv run dmlab-harness compare --candidate ortools --suite full    # ~20 min fresh, ~4 min with champion reuse
+uv run dmlab-harness compare --candidate ortools --suite full --audit-reuse 3   # also re-solve 3 reused runs
 caffeinate -i uv run dmlab-harness selfcheck --suite full                      # ~40 min
 ```
 
@@ -113,20 +114,26 @@ caffeinate -i uv run dmlab-harness selfcheck --suite full                      #
   information only (met or not met). The promotion gate itself comes in
   Module 4.
 * **Champion reuse**: before running the champion, the harness looks for
-  earlier solve runs in MLflow with the same config, git commit (clean tree
-  only), instance, seed, time limit, data version and worker count, and runs
-  only what is missing (`--no-reuse` forces fresh runs). The card says how
-  many runs were reused. Reused runs ran under another machine load, which the
-  card states.
-* **Report card**: `report_card.md` and `report_card.json` on the compare run
-  in MLflow experiment `harness`. The card covers wins, losses and ties in
-  plain words, the statistics, a table per slice and the labels. The compare
-  run is the parent of two evaluation runs, and each evaluation run is the
-  parent of one solve run per instance and seed.
-* **Registry**: model `routing-solver`, aliases `@champion` and
-  `@challenger`. `register-champion` only works while no champion exists.
-  Moving the champion is left to the promotion gate with human approval
-  (Module 4).
+  earlier solve runs in MLflow with the same **solver fingerprint**, instance,
+  seed, time limit, data version and worker count, made on a clean tree
+  (`git_dirty=false`), and runs only what is missing (`--no-reuse` forces
+  fresh runs). The card says how many runs were reused.
+* **Solver fingerprint** (`dmlab/harness/fingerprint.py`): a hash of
+  everything that can change a solve result. It covers:
+  * all of `dmlab` except a short pinned list of files and folders that only
+    read or present results (report card, gate preview, compare, stats, self
+    check, registry, summary, API, CLIs; the agent, safeguards, api,
+    forecasting and sim folders);
+  * `datasets.yaml`, `amazon_subset.yaml`, `business.yaml`, `data/bks.csv`;
+  * the per run wall clock budget only;
+  * the solver config, including any plugin code;
+  * the Python version, solver library versions, platform and CPU model.
+  
+  So a README or report card commit keeps champion runs reusable. Each
+  evaluation run logs `fingerprint.json` listing every hashed item.
+  Safeguards: an import guard test fails if the solve path ever imports
+  excluded code, and `--audit-reuse K` solves K reused runs again and puts the
+  comparison on the card.
 * **Test split**: only `dmlab/safeguards/test_split.py` (the gate code path)
   can read it. `tests/test_test_split_guard.py` proves this statically and at
   runtime. The CLI only accepts `--split tune|validation`.

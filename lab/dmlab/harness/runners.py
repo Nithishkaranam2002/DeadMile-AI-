@@ -26,12 +26,16 @@ from dmlab.routing.solver import SOLVER_NAMES, get_solver
 
 
 class SolverConfig(BaseModel):
-    """What a registry 'model' is for routing: a solver and its parameters."""
+    """What a registry 'model' is for routing: a solver, its parameters and any
+    plugin code. The plugin source text is part of the config, so it is part of
+    ``key()`` and of the solver fingerprint: a changed plugin is never reused."""
 
     model_config = ConfigDict(frozen=True)
 
     solver: str
     params: dict[str, Any] = Field(default_factory=dict)
+    # Plugin name -> Python source (code variants, Module 4). Not runnable yet.
+    plugins: dict[str, str] = Field(default_factory=dict)
 
     def model_post_init(self, _: Any) -> None:
         if self.solver not in SOLVER_NAMES:
@@ -46,9 +50,14 @@ class SolverConfig(BaseModel):
         return hashlib.sha256(body.encode()).hexdigest()[:12]
 
     def label(self) -> str:
-        if not self.params:
-            return f"{self.solver} (default config)"
-        return f"{self.solver} {json.dumps(self.params, sort_keys=True)}"
+        text = (
+            f"{self.solver} {json.dumps(self.params, sort_keys=True)}"
+            if self.params
+            else f"{self.solver} (default config)"
+        )
+        for name, code in sorted(self.plugins.items()):
+            text += f" + plugin {name} ({hashlib.sha256(code.encode()).hexdigest()[:8]})"
+        return text
 
 
 class SolveTask(BaseModel):
@@ -59,6 +68,11 @@ class SolveTask(BaseModel):
     ref: InstanceRef
     seed: int
     time_limit_s: float
+
+    def model_post_init(self, _: Any) -> None:
+        # Plugins run only inside the sandbox, which arrives in Module 4.
+        if self.config.plugins:
+            raise ValueError("plugin code variants are disabled until Module 4 (sandbox)")
 
 
 class TaskOutcome(BaseModel):

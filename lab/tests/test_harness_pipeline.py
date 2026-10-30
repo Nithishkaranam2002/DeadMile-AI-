@@ -163,3 +163,28 @@ def test_no_reuse_from_a_dirty_tree(store: MlflowClient):
         compare(nn, pyvrp, _suite(), LocalRunner(2))
         again, _ = compare(nn, pyvrp, _suite(), LocalRunner(2))
     assert again.champion.reused_runs == 0
+
+
+def test_reuse_works_across_commits_when_only_excluded_code_changed(store, monkeypatch):
+    nn, pyvrp = SolverConfig(solver="nn"), SolverConfig(solver="pyvrp")
+    for commit in ("a" * 40, "b" * 40):  # two clean commits, same fingerprint
+        fake = GitInfo(commit=commit, dirty=False, changed_files=[])
+        monkeypatch.setattr(compare_module, "git_info", lambda fake=fake: fake)
+        c, _ = compare(nn, pyvrp, _suite(), LocalRunner(2))
+    assert c.champion.reused_runs == 2
+    assert c.champion.fingerprint and c.candidate.fingerprint
+    assert c.champion.fingerprint != c.candidate.fingerprint
+
+
+def test_reuse_audit_resolves_reused_runs(store, clean_git):
+    nn, pyvrp = SolverConfig(solver="nn"), SolverConfig(solver="pyvrp")
+    compare(nn, pyvrp, _suite(), LocalRunner(2))
+    c, run_id = compare(nn, pyvrp, _suite(), LocalRunner(2), audit_reuse=1)
+    assert c.champion.reused_runs == 2 and len(c.champion.reuse_audit) == 1
+    a = c.champion.reuse_audit[0]
+    assert a["reused_distance"] is not None and a["fresh_distance"] is not None
+    md = mlflow.artifacts.load_text(f"{store.get_run(run_id).info.artifact_uri}/report_card.md")
+    assert "Reuse audit (champion): 1 reused runs were solved again" in md
+    ev = store.get_run(c.champion.run_id)
+    arts = {x.path for x in store.list_artifacts(ev.info.run_id)}
+    assert "fingerprint.json" in arts

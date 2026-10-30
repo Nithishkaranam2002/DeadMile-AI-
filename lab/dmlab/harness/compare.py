@@ -45,6 +45,8 @@ class Side(BaseModel):
     reused_runs: int = 0
     total_runs: int = 0
     reused_run_ids: list[str] = []
+    fingerprint: str = ""
+    reuse_audit: list[dict[str, Any]] = []
 
 
 class SideMetrics(BaseModel):
@@ -137,6 +139,8 @@ def _side(ev: Evaluation) -> Side:
         reused_runs=ev.reused_runs,
         total_runs=len(ev.runs),
         reused_run_ids=ev.reused_run_ids,
+        fingerprint=ev.fingerprint,
+        reuse_audit=ev.reuse_audit,
     )
 
 
@@ -370,6 +374,7 @@ def compare(
     candidate_ref: str | None = None,
     champion_ref: str | None = None,
     reuse_champion: bool = True,
+    audit_reuse: int = 0,
 ) -> tuple[Comparison, str]:
     """Run candidate and champion on the suite, compare, log. Returns (comparison, run id)."""
     configure_mlflow()
@@ -409,6 +414,7 @@ def compare(
                     seeds=suite.seeds,
                     registry_ref=champion_ref,
                     reuse=reuse_champion,
+                    audit_reuse=audit_reuse,
                 ),
                 EvalSpec(
                     group="candidate",

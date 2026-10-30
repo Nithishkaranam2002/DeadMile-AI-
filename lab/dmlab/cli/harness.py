@@ -61,7 +61,14 @@ def cmd_compare(args: argparse.Namespace) -> None:
     champ, champ_ref = _resolve(args.champion, None)
     suite = get_suite(args.suite, args.split)
     c, run_id = compare(
-        cand, champ, suite, LocalRunner(args.workers), cand_ref, champ_ref, not args.no_reuse
+        cand,
+        champ,
+        suite,
+        LocalRunner(args.workers),
+        cand_ref,
+        champ_ref,
+        reuse_champion=not args.no_reuse,
+        audit_reuse=args.audit_reuse,
     )
     for line in plain_words(c).values():
         print(line)
@@ -113,6 +120,13 @@ def main() -> None:
         "--no-reuse",
         action="store_true",
         help="run the champion fresh even when matching runs exist in MLflow",
+    )
+    c.add_argument(
+        "--audit-reuse",
+        type=int,
+        default=0,
+        metavar="K",
+        help="solve K reused champion runs again and report how they compare",
     )
     suite_args(c)
     c.set_defaults(func=cmd_compare)
