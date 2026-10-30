@@ -35,7 +35,7 @@ The lab plugs into this stack. It does not replace it. Follow the existing repo 
 
 | Need | Choice |
 |---|---|
-| Champion route solver | PyVRP (Hybrid Genetic Search, supports time windows, pickups and deliveries, capacity) |
+| Champion route solver | PyVRP 0.14 (iterated local search with late acceptance; earlier PyVRP versions used Hybrid Genetic Search. Supports time windows, pickups and deliveries, capacity) |
 | Second solver baseline | Google OR Tools routing |
 | Naive baseline | Nearest neighbor heuristic written by us |
 | Instance reading | vrplib (supports Solomon format) or PyVRP's reader |
@@ -127,7 +127,7 @@ load context, then hypothesize, then propose variants, then run, then evaluate, 
 
 Variant types, safest first:
 
-1. Parameter variants: solver settings such as PyVRP penalty and population settings, time limits, OR Tools first solution strategy and local search metaheuristic.
+1. Parameter variants: solver settings such as PyVRP 0.14 search settings (iterated local search: iterations without improvement before restart, late acceptance history length, exhaustive search on new best; penalty: update frequency, increase and decrease factors, target feasible share; neighbourhood: number of neighbours, wait time weight; perturbation: min and max perturbations; which local search operators are used), time limits, OR Tools first solution strategy and local search metaheuristic. PyVRP 0.14 has no population or crossover settings.
 2. Formulation and policy variants: time window slack, max route duration, fleet size, capacity reserved for same day pickups, cluster first route second.
 3. Code variants: LLM written Python that implements the fixed plugin interface in agent/plugins/interface.py, for example an initial solution builder or a stop clustering rule. Code variants always run inside the sandbox. They are disabled until Module 4.
 
