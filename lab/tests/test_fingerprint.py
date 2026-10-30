@@ -72,8 +72,12 @@ def test_new_file_in_an_excluded_folder_keeps_the_fingerprint(lab_copy):
 def test_agent_and_llm_budgets_keep_the_fingerprint(lab_copy):
     before = _fp(lab_copy)
     path = lab_copy / "configs/budgets.yaml"
-    path.write_text(path.read_text().replace("llm_max_usd: null", "llm_max_usd: 5"))
-    assert "llm_max_usd: 5" in path.read_text()
+    text = path.read_text()
+    text = text.replace("llm_max_usd: 1.00", "llm_max_usd: 5").replace(
+        "max_variants: 8", "max_variants: 3"
+    )
+    path.write_text(text)
+    assert "llm_max_usd: 5" in path.read_text() and "max_variants: 3" in path.read_text()
     assert _fp(lab_copy) == before
 
 
@@ -106,7 +110,8 @@ def test_new_routing_file_changes_the_fingerprint(lab_copy):
 def test_per_run_wall_clock_budget_changes_the_fingerprint(lab_copy):
     before = _fp(lab_copy)
     path = lab_copy / "configs/budgets.yaml"
-    path.write_text(path.read_text().replace("wall_clock_seconds: null", "wall_clock_seconds: 60"))
+    path.write_text(path.read_text().replace("wall_clock_seconds: 120", "wall_clock_seconds: 60"))
+    assert "wall_clock_seconds: 60" in path.read_text()
     assert _fp(lab_copy) != before
 
 
@@ -148,7 +153,7 @@ def test_manifest_lists_what_is_hashed(lab_copy):
     assert "dmlab/routing/pyvrp_solver.py" in m["files"]
     assert "dmlab/harness/report_card.py" not in m["files"]
     assert not any(f.startswith("dmlab/agent/") for f in m["files"])
-    assert m["budgets"] == {"per_run.wall_clock_seconds": None}
+    assert m["budgets"] == {"per_run.wall_clock_seconds": 120}
     assert {"python", "platform", "cpu", "lib.pyvrp", "lib.ortools"} <= set(m["environment"])
 
 

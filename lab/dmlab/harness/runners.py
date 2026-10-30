@@ -13,6 +13,7 @@ out as activities that call ``run_task`` and stream outcomes back.
 
 import hashlib
 import json
+import signal
 from abc import ABC, abstractmethod
 from collections.abc import Iterator, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -21,6 +22,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from dmlab.paths import budgets_config
+from dmlab.routing.formulation import Formulation
 from dmlab.routing.runner import InstanceRef, run_task
 from dmlab.routing.solver import SOLVER_NAMES, get_solver
 
@@ -36,17 +39,27 @@ class SolverConfig(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
     # Plugin name -> Python source (code variants, Module 4). Not runnable yet.
     plugins: dict[str, str] = Field(default_factory=dict)
+    # How the solver sees the problem (formulation variants, see
+    # dmlab/routing/formulation.py). Results are always measured on the
+    # original instance. Empty means the problem as given.
+    formulation: dict[str, Any] = Field(default_factory=dict)
 
     def model_post_init(self, _: Any) -> None:
         if self.solver not in SOLVER_NAMES:
             raise ValueError(f"unknown solver {self.solver!r}; choose from {SOLVER_NAMES}")
+        if "time_limit_s" in self.params:
+            raise ValueError("the time limit is fixed by the suite, not by a solver config")
+        Formulation(**self.formulation)  # validate early
 
     @property
     def uses_seed(self) -> bool:
         return get_solver(self.solver, **self.params).uses_seed
 
     def key(self) -> str:
-        body = json.dumps(self.model_dump(), sort_keys=True, default=str)
+        dump = self.model_dump()
+        if not dump["formulation"]:
+            dump.pop("formulation")  # keeps keys of configs without one unchanged
+        body = json.dumps(dump, sort_keys=True, default=str)
         return hashlib.sha256(body.encode()).hexdigest()[:12]
 
     def label(self) -> str:
@@ -55,6 +68,8 @@ class SolverConfig(BaseModel):
             if self.params
             else f"{self.solver} (default config)"
         )
+        if self.formulation:
+            text += f" + formulation {json.dumps(self.formulation, sort_keys=True)}"
         for name, code in sorted(self.plugins.items()):
             text += f" + plugin {name} ({hashlib.sha256(code.encode()).hexdigest()[:8]})"
         return text
@@ -88,8 +103,42 @@ class Runner(ABC):
         outcomes with ``error`` set; they are never dropped."""
 
 
+WALL_CLOCK_ERROR = "wall clock budget exceeded"
+
+
+class WallClockExceeded(Exception):
+    pass
+
+
+def wall_clock_limit() -> float | None:
+    """Per run wall clock budget (configs/budgets.yaml per_run.wall_clock_seconds)."""
+    value = (budgets_config().get("per_run") or {}).get("wall_clock_seconds")
+    return float(value) if value else None
+
+
+def _on_alarm(signum: int, frame: Any) -> None:
+    raise WallClockExceeded()
+
+
 def _execute(task: SolveTask) -> dict[str, Any]:
-    return run_task(task.config.solver, task.config.params, task.ref, task.time_limit_s, task.seed)
+    """Run one task in a worker, under the per run wall clock budget.
+
+    The budget is enforced with a real time interval timer in the worker's main
+    thread. PyVRP's search loop and our own code run Python between steps, so
+    the timer fires on time; OR Tools stops at its own time limit first.
+    """
+    limit = wall_clock_limit()
+    if limit is not None:
+        signal.signal(signal.SIGALRM, _on_alarm)
+        signal.setitimer(signal.ITIMER_REAL, limit)
+    try:
+        c = task.config
+        return run_task(c.solver, c.params, task.ref, task.time_limit_s, task.seed, c.formulation)
+    except WallClockExceeded:
+        raise RuntimeError(f"{WALL_CLOCK_ERROR}: run took longer than {limit:g} s") from None
+    finally:
+        if limit is not None:
+            signal.setitimer(signal.ITIMER_REAL, 0)
 
 
 class LocalRunner(Runner):

@@ -36,6 +36,9 @@ from dmlab.routing.runner import load_instance, log_solve_run
 
 EXPERIMENT = "harness"
 MODULE = "2"
+# Experiments searched for reusable champion solve runs: the harness and the
+# experiment agent (Module 3) log solve runs with the same tags.
+REUSE_EXPERIMENTS = ("harness", "agent")
 
 
 class EvalSpec(BaseModel):
@@ -307,8 +310,12 @@ def _lookup_reuse(
     wanted_specs = [s for s in specs if s.reuse]
     if not wanted_specs or workers is None or git["dirty"]:
         return {}
-    exp = mlflow.get_experiment_by_name(EXPERIMENT)
-    if exp is None:
+    exp_ids = [
+        e.experiment_id
+        for e in (mlflow.get_experiment_by_name(n) for n in REUSE_EXPERIMENTS)
+        if e is not None
+    ]
+    if not exp_ids:
         return {}
     versions = {
         _instance_name(ref.path, ref.kind): load_instance(ref).data_version for ref in suite.refs
@@ -318,7 +325,7 @@ def _lookup_reuse(
         seeds, _ = seeds_for(spec.config, spec.seeds)
         wanted = {(name, s): v for name, v in versions.items() for s in seeds}
         out[spec.group] = find_reusable(
-            exp.experiment_id, fps[spec.group], git, workers, suite.time_limit_s, wanted
+            exp_ids, fps[spec.group], git, workers, suite.time_limit_s, wanted
         )
     return out
 

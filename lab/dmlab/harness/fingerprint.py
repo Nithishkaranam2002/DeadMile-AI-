@@ -8,8 +8,9 @@ Included (default include: anything new under dmlab is hashed automatically):
 * every .py file under dmlab, except EXCLUDED_FILES and EXCLUDED_DIRS;
 * configs/datasets.yaml, configs/amazon_subset.yaml, configs/business.yaml
   (cost per stop is logged on every solve run) and data/bks.csv (gap metric);
-* from configs/budgets.yaml only the settings that can change one solve run
-  (BUDGET_KEYS), not the agent and LLM budgets;
+* from configs/budgets.yaml (or the DMLAB_BUDGETS_FILE override) only the
+  settings that can change one solve run (BUDGET_KEYS), not the agent and
+  LLM budgets;
 * the solver config key (solver, parameters and any plugin code);
 * the Python version, the solver libraries' versions, the platform and the
   CPU model (time limited solvers get further on a faster CPU).
@@ -29,10 +30,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 from dmlab.harness.runners import SolverConfig
-from dmlab.paths import LAB_DIR
+from dmlab.paths import LAB_DIR, budgets_config
 
 EXCLUDED_FILES = frozenset(
     {
@@ -115,8 +114,7 @@ def environment() -> dict[str, str]:
 
 
 def _budget_settings(root: Path) -> dict[str, Any]:
-    path = root / "configs/budgets.yaml"
-    data = yaml.safe_load(path.read_text()) if path.exists() else {}
+    data = budgets_config(root)
     return {".".join(keys): (data.get(keys[0]) or {}).get(keys[1]) for keys in BUDGET_KEYS}
 
 

@@ -1,14 +1,31 @@
 # Compute, time and LLM cost limits for the experiment agent.
-# Structure only: every value is null until it is decided and committed.
-# Hitting any budget stops the agent cleanly and logs the reason.
+# These are rules, not results. Starting values agreed in Module 3; any change
+# must be a reviewed commit that says why. Hitting any budget stops the agent
+# cleanly and logs the reason. For a test with very low budgets, point
+# DMLAB_BUDGETS_FILE (or `dmlab-agent cycle --budgets FILE`) at another file
+# with the same structure; never edit these values to make a run fit.
 
 per_run:
-  wall_clock_seconds: null        # max wall clock time for one solver run
+  # Max wall clock time for one solver run, enforced in the worker. 4x the
+  # 30 s gate time limit, leaving room to load an Amazon instance and build
+  # the model. Part of the solver fingerprint (it can end a run).
+  wall_clock_seconds: 120
 
 per_cycle:
-  max_variants: null              # max variants proposed and run in one agent cycle
-  max_cpu_minutes: null           # max total CPU minutes across one cycle
+  # Max variants proposed in one agent cycle (valid or not). Enough for at
+  # least 5 proposals plus some rejections; quick phase stays near 15 CPU min.
+  max_variants: 8
+  # Max total CPU minutes of solver runs in one cycle (sum of run times;
+  # every solver is single threaded). Quick phase (~15) + 2 confirmations on
+  # full validation (~85 each) + one champion rerun (~85) is about 270.
+  # Each batch is estimated before it starts, and a batch that does not fit
+  # never starts.
+  max_cpu_minutes: 300
 
 per_session:
-  llm_max_tokens: null            # total LLM tokens (prompt + completion) per session
-  llm_max_usd: null               # LLM spend cap per session, from LiteLLM per call cost tracking
+  # Total LLM tokens (prompt + completion, reasoning included) per session.
+  # About 5 cycles at roughly 60k tokens each.
+  llm_max_tokens: 300000
+  # LLM spend cap per session in USD, from LiteLLM per call cost tracking.
+  # About 10x the expected cycle cost with gpt-5-mini; a runaway loop stays cheap.
+  llm_max_usd: 1.00

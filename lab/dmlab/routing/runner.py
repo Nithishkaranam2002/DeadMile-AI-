@@ -22,6 +22,8 @@ from dmlab.data.bks import load_dimacs_bks
 from dmlab.data.solomon import list_instances, load_solomon
 from dmlab.paths import CONFIG_DIR, LAB_DIR, datasets_config, load_config
 from dmlab.routing.feasibility import check
+from dmlab.routing.formulation import Formulation
+from dmlab.routing.formulation import apply as apply_formulation
 from dmlab.routing.metrics import compute
 from dmlab.routing.model import ProblemInstance
 from dmlab.routing.solver import get_solver
@@ -85,12 +87,24 @@ def load_instance(ref: InstanceRef) -> ProblemInstance:
 
 
 def run_task(
-    solver_name: str, params: dict[str, Any], ref: InstanceRef, time_limit_s: float, seed: int
+    solver_name: str,
+    params: dict[str, Any],
+    ref: InstanceRef,
+    time_limit_s: float,
+    seed: int,
+    formulation: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Solve, then check and measure on the original instance.
+
+    With a formulation, the solver sees a modified copy (see formulation.py);
+    the feasibility check and every metric still use the original instance.
+    """
     random.seed(seed)
     np.random.seed(seed)
     inst = load_instance(ref)
-    result = get_solver(solver_name, **params).solve(inst, time_limit_s, seed)
+    form = Formulation(**(formulation or {}))
+    solver_view = apply_formulation(inst, form)
+    result = get_solver(solver_name, **params).solve(solver_view, time_limit_s, seed)
     report = check(inst, result.routes)
     bks = load_dimacs_bks(BKS_CSV).get(inst.name) if inst.source == "solomon" else None
     metrics = compute(inst, result.routes, report, result.runtime_s, bks, load_config("business"))
@@ -111,6 +125,7 @@ def run_task(
         "report": report.model_dump(),
         "metrics": metrics.model_dump(),
         "bks_used": bks is not None,
+        "formulation": None if form.is_identity() else form.model_dump(),
     }
 
 
@@ -144,6 +159,8 @@ def log_solve_run(
         "cost_note": m["cost_note"],
     }
     tags.update(extra_tags or {})
+    if payload.get("formulation"):
+        tags["formulation"] = "solver saw a modified copy; checked on the original instance"
     if payload["bks_used"]:
         tags["bks_objective"] = "distance_only, dimacs_trunc1 (floor(10*d))"
     params = {
@@ -155,6 +172,7 @@ def log_solve_run(
         "fleet_max_shift": inst["fleet"]["max_shift"],
         "objective": "total distance",
         **{f"solver.{k}": v for k, v in res["config"].items() if k != "time_limit_s"},
+        **{f"formulation.{k}": v for k, v in (payload.get("formulation") or {}).items()},
     }
     metrics = {
         "feasible": float(m["feasible"]),

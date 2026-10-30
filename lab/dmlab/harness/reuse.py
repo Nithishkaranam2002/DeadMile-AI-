@@ -40,7 +40,7 @@ def reuse_tags(
 
 
 def find_reusable(
-    experiment_id: str,
+    experiment_ids: list[str],
     fingerprint: str,
     git: dict[str, Any],
     workers: int,
@@ -62,7 +62,7 @@ def find_reusable(
         f"and tags.{TAG_TIME_LIMIT} = '{time_limit_s:g}'"
     )
     runs = MlflowClient().search_runs(
-        [experiment_id],
+        experiment_ids,
         filter_string=flt,
         max_results=50_000,
         order_by=["attributes.start_time DESC"],

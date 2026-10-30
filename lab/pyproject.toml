@@ -7,12 +7,15 @@ requires-python = ">=3.12,<3.13"
 dependencies = [
     "fastapi>=0.162,<1",
     "ijson>=3.3,<4",
+    "langgraph==1.2.18",
+    "litellm==1.106.6",
     "mlflow==3.17.2",
     "numpy>=2,<3",
     "ortools==9.15.6755",
     "pydantic>=2.14,<3",
     "pyvrp==0.14.1",
     "pyyaml>=6.0.3,<7",
+    "qdrant-client==1.20.0",
     "scipy>=1.18,<2",
     "uvicorn[standard]>=0.54,<1",
     "vrplib==2.2.0",
@@ -28,6 +31,12 @@ dev = [
     "httpx>=0.28.1,<1",
     "pytest>=9.2,<10",
     "ruff>=0.17.3,<0.18",
+]
+# Local ML models: agent memory embeddings (Module 3) and Chronos 2 (Module 5a).
+# Not installed in the lab-api image. Install with: uv sync --group ml
+ml = [
+    "sentence-transformers==6.2.0",
+    "torch==2.15.0",
 ]
 
 [build-system]
