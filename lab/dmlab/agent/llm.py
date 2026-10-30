@@ -33,6 +33,7 @@ SECRET_NAME = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)", re.IG
 REDACTED = "[REDACTED]"
 MAIN_MODEL_ENV = "LAB_LLM_MODEL"
 OFFLINE_MODEL_ENV = "LAB_LLM_OFFLINE_MODEL"
+LOCAL_NUM_CTX = 24_576
 
 
 def _secret_values() -> list[str]:
@@ -210,6 +211,9 @@ class LiteLLMClient(LLMClient):
         }
         if self.local:
             kwargs["api_base"] = os.environ.get("OLLAMA_API_BASE", "http://localhost:11434")
+            # Ollama's default context window (4096 tokens) silently truncates
+            # our prompts; this fits the largest prompt plus the output budget.
+            kwargs["num_ctx"] = LOCAL_NUM_CTX
         try:
             resp = self.litellm.completion(**kwargs)
         except Exception as exc:
