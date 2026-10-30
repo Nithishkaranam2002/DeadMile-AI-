@@ -9,6 +9,11 @@ Pairing rules:
 * an instance enters the distance statistics only when both solvers were
   feasible on every run of it; otherwise it is listed as excluded, with why;
 * r = (champion - candidate) / champion, so r > 0 means the candidate is better.
+
+Fair runs: both sides use the same suite, time limit and worker count (checked
+here). Champion runs may be reused from MLflow (see reuse.py); the card says
+how many. The primary metric is total distance; the other metrics are shown
+for information and never used for pass or fail.
 """
 
 from collections import defaultdict
@@ -36,6 +41,29 @@ class Side(BaseModel):
     seeds_run: list[int]
     seed_policy: str
     run_id: str
+    workers: int | None = None
+    reused_runs: int = 0
+    total_runs: int = 0
+    reused_run_ids: list[str] = []
+
+
+class SideMetrics(BaseModel):
+    """Information only: means over instances of seed averaged values."""
+
+    vehicles_used: float | None
+    distance_per_stop: float | None
+    productivity_name: str | None  # stops_per_driver_hour or stops_per_100_time_units
+    productivity: float | None
+    time_window_violations: float | None
+    cost_per_stop: float | None
+    cost_note: str
+
+
+class SecondaryRow(BaseModel):
+    slice: str
+    distance_unit: str
+    champion: SideMetrics
+    candidate: SideMetrics
 
 
 class PairedInstance(BaseModel):
@@ -90,6 +118,9 @@ class Comparison(BaseModel):
     labels: dict[str, list[str]]  # source -> honesty labels
     distance_labels: dict[str, str]  # source -> distance label
     data_versions: dict[str, list[str]]  # source -> data versions seen
+    secondary: list[SecondaryRow]
+    min_p_two_sided: float | None  # smallest two sided p reachable with these pairs
+    workers: int | None
 
 
 def _side(ev: Evaluation) -> Side:
@@ -102,6 +133,37 @@ def _side(ev: Evaluation) -> Side:
         seeds_run=ev.seeds_run,
         seed_policy=ev.seed_policy,
         run_id=ev.run_id,
+        workers=ev.workers,
+        reused_runs=ev.reused_runs,
+        total_runs=len(ev.runs),
+        reused_run_ids=ev.reused_run_ids,
+    )
+
+
+def _side_metrics(runs: list[Any]) -> SideMetrics:
+    ok = [r for r in runs if not r.error]
+    per_inst: dict[str, list[Any]] = defaultdict(list)
+    for r in ok:
+        per_inst[r.instance].append(r)
+
+    def mean_of(attr: str) -> float | None:
+        vals = []
+        for rs in per_inst.values():
+            xs = [getattr(r, attr) for r in rs if getattr(r, attr) is not None]
+            if xs:
+                vals.append(stats.seed_mean(xs))
+        return stats.seed_mean(vals) if vals else None
+
+    names = {r.productivity_name for r in ok if r.productivity_name}
+    notes = sorted({r.cost_note for r in ok if r.cost_note})
+    return SideMetrics(
+        vehicles_used=mean_of("vehicles_used"),
+        distance_per_stop=mean_of("distance_per_stop"),
+        productivity_name=names.pop() if len(names) == 1 else None,
+        productivity=mean_of("productivity") if len(names) == 1 else None,
+        time_window_violations=mean_of("time_window_violations"),
+        cost_per_stop=mean_of("cost_per_stop"),
+        cost_note="; ".join(notes),
     )
 
 
@@ -206,6 +268,8 @@ def compare_evaluations(
             by[side][run.instance].append(run)
     if set(by["champion"]) != set(by["candidate"]):
         raise ValueError("candidate and champion were evaluated on different instances")
+    if candidate.workers != champion.workers:
+        raise ValueError("candidate and champion must run with the same number of workers")
 
     order = [*st.get("slice_order", []), "fixture"]
     instances = [
@@ -215,6 +279,19 @@ def compare_evaluations(
         {p.slice for p in instances}, key=lambda s: (order.index(s) if s in order else 99, s)
     )
     slices = [_row(s, [p for p in instances if p.slice == s], st) for s in slice_names]
+    secondary = []
+    for s in slice_names:
+        ch = [r for r in champion.runs if r.slice == s]
+        ca = [r for r in candidate.runs if r.slice == s]
+        secondary.append(
+            SecondaryRow(
+                slice=s,
+                distance_unit=next((r.distance_unit for r in ch + ca if r.distance_unit), ""),
+                champion=_side_metrics(ch),
+                candidate=_side_metrics(ca),
+            )
+        )
+    nonzero = sum(1 for p in instances if p.rel_improvement)
     all_runs = champion.runs + candidate.runs
     labels, dlabels, versions = {}, {}, defaultdict(set)
     for run in all_runs:
@@ -240,6 +317,9 @@ def compare_evaluations(
         labels=labels,
         distance_labels=dlabels,
         data_versions={k: sorted(v) for k, v in versions.items()},
+        secondary=secondary,
+        min_p_two_sided=stats.min_p_two_sided(nonzero) if nonzero else None,
+        workers=champion.workers,
     )
 
 
@@ -250,11 +330,13 @@ def statistics_settings() -> dict[str, Any]:
     return st
 
 
-def log_comparison(comparison: Comparison, name: str, context: dict[str, Any]) -> None:
+def log_comparison(
+    comparison: Comparison, name: str, context: dict[str, Any], title: str | None = None
+) -> None:
     """Log the comparison and its report card on the active MLflow run."""
     from dmlab.harness.report_card import to_json, to_markdown
 
-    card = to_json(comparison, context)
+    card = to_json(comparison, context, title)
     prefix = f"{name}/" if name else ""
     mlflow.log_dict(card, f"{prefix}report_card.json")
     mlflow.log_text(to_markdown(card), f"{prefix}report_card.md")
@@ -269,6 +351,7 @@ def log_comparison(comparison: Comparison, name: str, context: dict[str, Any]) -
         f"{key}ties": o.ties,
         f"{key}excluded": o.excluded,
         f"{key}paired_instances": o.paired,
+        f"{key}champion_reused_runs": comparison.champion.reused_runs,
     }
     for k in ("median_rel_improvement", "ci_low", "ci_high", "runtime_ratio"):
         v = getattr(o, k)
@@ -284,6 +367,7 @@ def compare(
     runner: Runner,
     candidate_ref: str | None = None,
     champion_ref: str | None = None,
+    reuse_champion: bool = True,
 ) -> tuple[Comparison, str]:
     """Run candidate and champion on the suite, compare, log. Returns (comparison, run id)."""
     configure_mlflow()
@@ -318,7 +402,11 @@ def compare(
         ev_champ, ev_cand = run_evaluations(
             [
                 EvalSpec(
-                    group="champion", config=champion, seeds=suite.seeds, registry_ref=champion_ref
+                    group="champion",
+                    config=champion,
+                    seeds=suite.seeds,
+                    registry_ref=champion_ref,
+                    reuse=reuse_champion,
                 ),
                 EvalSpec(
                     group="candidate",
@@ -345,3 +433,20 @@ def run_context(git: dict[str, Any], run_id: str, runner: Runner) -> dict[str, A
         "git_dirty": git["dirty"],
         "workers": getattr(runner, "workers", None),
     }
+
+
+def log_named_comparison(
+    comparison: Comparison,
+    run_name: str,
+    git: dict[str, Any],
+    runner: Runner,
+    tags: dict[str, str] | None = None,
+    note: str | None = None,
+) -> str:
+    """Log a comparison's report card in its own nested run with a clear name."""
+    with mlflow.start_run(run_name=run_name, nested=True, tags=tags or {}) as run:
+        ctx = run_context(git, run.info.run_id, runner)
+        if note:
+            ctx["note"] = note
+        log_comparison(comparison, "", ctx, title=run_name)
+        return run.info.run_id

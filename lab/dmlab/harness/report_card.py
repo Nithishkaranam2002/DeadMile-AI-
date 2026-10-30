@@ -2,14 +2,16 @@
 
 The JSON holds every number; the Markdown is rendered only from the JSON, so
 the two can never disagree. Every number comes from the comparison, which
-comes from MLflow logged runs. Gate verdicts are not part of the card yet
-(they come with the promotion gates); the card states the statistics only.
+comes from MLflow logged runs. The card shows how the result compares with
+the gates.yaml thresholds as information only; the promotion gate itself
+(test split, human approval) comes in Module 4.
 """
 
 from datetime import UTC, datetime
 from typing import Any
 
 from dmlab.harness.compare import Comparison
+from dmlab.harness.gate_preview import RUNTIME_NOTE, preview
 
 SIGNIFICANCE = 0.05  # used only for the plain words reading, not a gate
 MIN_SLICE_CI = 3
@@ -47,9 +49,10 @@ def plain_words(c: Comparison) -> dict[str, str]:
         f"({champ}) on {o.wins} of {o.instances} instances, a longer one on {o.losses}, "
         f"and the same on {o.ties}{excl}."
     )
-    if w.p_greater < SIGNIFICANCE and o.ci_low is not None and o.ci_low > 0:
+    significant = w.p_two_sided < SIGNIFICANCE
+    if significant and o.ci_low is not None and o.ci_low > 0:
         reading = "The candidate is better, and the difference is statistically significant."
-    elif w.p_less < SIGNIFICANCE and o.ci_high is not None and o.ci_high < 0:
+    elif significant and o.ci_high is not None and o.ci_high < 0:
         reading = "The candidate is worse, and the difference is statistically significant."
     else:
         reading = "No statistically significant difference between candidate and champion."
@@ -67,9 +70,30 @@ def plain_words(c: Comparison) -> dict[str, str]:
     return {"record": record, "reading": reading, "size": size}
 
 
-def to_json(c: Comparison, context: dict[str, Any]) -> dict[str, Any]:
+def fairness(c: Comparison) -> list[str]:
+    notes = [
+        f"Both sides used the same suite, the same {c.time_limit_s:g} s time limit and the "
+        f"same number of workers ({c.workers}), with their solves interleaved on one pool.",
+        f"Runtime gate: {RUNTIME_NOTE}.",
+    ]
+    ch = c.champion
+    if ch.reused_runs:
+        notes.append(
+            f"Champion: {ch.reused_runs} of {ch.total_runs} solve runs were reused from earlier "
+            "MLflow runs with the same config, git commit (clean tree), instance, seed, time "
+            "limit, data version and worker count, instead of being run again. Reused runs ran "
+            "at another time, under whatever else the machine was doing then."
+        )
+    else:
+        notes.append(f"Champion: all {ch.total_runs} solve runs ran fresh for this comparison.")
+    notes.append(f"Candidate: all {c.candidate.total_runs} solve runs ran fresh.")
+    return notes
+
+
+def to_json(c: Comparison, context: dict[str, Any], title: str | None = None) -> dict[str, Any]:
     return {
-        "report_card_version": 1,
+        "report_card_version": 2,
+        "title": title or f"Report card: {c.candidate.label} vs champion {c.champion.label}",
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "kind": "routing comparison",
         "provenance": context,
@@ -86,7 +110,13 @@ def to_json(c: Comparison, context: dict[str, Any]) -> dict[str, Any]:
             "relative improvement r = (champion - candidate) / champion per instance, "
             "seeds averaged first; r > 0 means the candidate is better (shorter)"
         ),
-        "gates": "not evaluated in this card (promotion gates come in Module 4)",
+        "primary_metric": "total distance (the only metric used for pass or fail)",
+        "gate_preview": {
+            "note": "information only, not a promotion decision (the promotion gate, on the "
+            "test split with human approval, comes in Module 4)",
+            "checks": [g.model_dump() for g in preview(c)],
+        },
+        "fairness": fairness(c),
         "comparison": c.model_dump(),
     }
 
@@ -97,7 +127,7 @@ def to_markdown(card: dict[str, Any]) -> str:
     pw = card["plain_words"]
     level = int(round(100 * st["ci_level"]))
     lines = [
-        f"# Report card: {c['candidate']['label']} vs champion {c['champion']['label']}",
+        f"# {card['title']}",
         "",
         f"Suite **{c['suite_name']}** on the **{c['split']}** split: {c['num_instances']} "
         f"instances, {c['time_limit_s']:g} s time limit per run. Generated "
@@ -107,6 +137,7 @@ def to_markdown(card: dict[str, Any]) -> str:
         + (" (uncommitted changes)" if card["provenance"].get("git_dirty") else "")
         + ".",
         "",
+        *([f"> {card['provenance']['note']}", ""] if card["provenance"].get("note") else []),
         "## In plain words",
         "",
         f"* {pw['record']}",
@@ -123,10 +154,13 @@ def to_markdown(card: dict[str, Any]) -> str:
         f"{_pct(o['median_rel_improvement'], 3)} |",
         f"| Bootstrap {level}% CI of the median | [{_pct(o['ci_low'], 3)}, "
         f"{_pct(o['ci_high'], 3)}] |",
-        f"| Wilcoxon signed rank p, one sided (candidate better) | {_p(w['p_greater'])} |",
+        f"| Wilcoxon signed rank p, two sided (used by the gates) | {_p(w['p_two_sided'])} |",
+        f"| Wilcoxon p, one sided (candidate better) | {_p(w['p_greater'])} |",
         f"| Wilcoxon p, one sided (candidate worse) | {_p(w['p_less'])} |",
-        f"| Wilcoxon p, two sided | {_p(w['p_two_sided'])} |",
         f"| Wilcoxon test used | {w['method']}, {w['n_nonzero']} non-tied instances |",
+        f"| Smallest two sided p reachable with {w['n_nonzero']} non-tied instances | "
+        + ("n/a" if c["min_p_two_sided"] is None else _p(c["min_p_two_sided"]))
+        + " |",
         f"| Runtime ratio (candidate / champion, seed averaged) | {_num(o['runtime_ratio'], 2)} |",
         f"| Candidate feasible instances | {o['candidate_feasible_instances']} of "
         f"{o['instances']} |",
@@ -134,7 +168,26 @@ def to_markdown(card: dict[str, Any]) -> str:
         "",
         f"Sign convention: {card['sign_convention']}. Bootstrap: {st['bootstrap_resamples']:,} "
         f"resamples of instances, seed {st['bootstrap_seed']}, percentile interval. "
-        f"Gates: {card['gates']}.",
+        f"Primary metric: {card['primary_metric']}.",
+        "",
+        "## Gate thresholds (information only)",
+        "",
+        f"Not a promotion decision: {card['gate_preview']['note']}. Thresholds from "
+        "configs/gates.yaml.",
+        "",
+        "| Gate | Threshold | Observed | Met |",
+        "|---|---|---|---|",
+    ]
+    for g in card["gate_preview"]["checks"]:
+        note = f" ({g['note']})" if g["note"] else ""
+        lines.append(
+            f"| {g['gate']} | {g['rule']} | {g['observed']}{note} | {'yes' if g['met'] else 'no'} |"
+        )
+    lines += [
+        "",
+        "## Fair runs",
+        "",
+        *[f"* {n}" for n in card["fairness"]],
         "",
         "## Seeds",
         "",
@@ -161,6 +214,32 @@ def to_markdown(card: dict[str, Any]) -> str:
         "",
         "Slices are small (a few instances each), so slice CIs are wide; read them as "
         "direction, not proof.",
+        "",
+        "## Other metrics (information only, not used for pass or fail)",
+        "",
+        "Means over instances of seed averaged values, champion / candidate.",
+        "",
+        "| Slice | Vehicles used | Distance per stop | Productivity | Time window violations "
+        "| Cost per stop |",
+        "|---|---|---|---|---|---|",
+    ]
+    cost_notes = set()
+    for row in c["secondary"]:
+        ch, ca = row["champion"], row["candidate"]
+        prod = ch["productivity_name"] or ca["productivity_name"] or "productivity"
+        cost_notes |= {x for x in (ch["cost_note"], ca["cost_note"]) if x}
+        lines.append(
+            f"| {row['slice']} | {_num(ch['vehicles_used'], 2)} / {_num(ca['vehicles_used'], 2)} "
+            f"| {_num(ch['distance_per_stop'], 2)} / {_num(ca['distance_per_stop'], 2)} "
+            f"{row['distance_unit']} | {_num(ch['productivity'], 2)} / "
+            f"{_num(ca['productivity'], 2)} {prod.replace('_', ' ')} | "
+            f"{_num(ch['time_window_violations'], 2)} / {_num(ca['time_window_violations'], 2)} "
+            f"| {_num(ch['cost_per_stop'], 2)} / {_num(ca['cost_per_stop'], 2)} |"
+        )
+    lines += [
+        "",
+        "Solomon time is in abstract units, so its productivity is stops per 100 time units, "
+        "not per driver hour. Cost per stop: " + ("; ".join(sorted(cost_notes)) or "n/a") + ".",
         "",
         "## What the numbers are",
         "",

@@ -68,6 +68,17 @@ def test_wilcoxon_all_ties_is_no_evidence():
     assert w.statistic is None
 
 
+def test_min_p_two_sided():
+    assert stats.min_p_two_sided(5) == pytest.approx(1 / 16)
+    assert stats.min_p_two_sided(6) == pytest.approx(1 / 32)
+    assert stats.min_p_two_sided(34) == pytest.approx(2 / 2**34)
+    # It matches what scipy reports when every pair favours one side.
+    w = stats.wilcoxon_test([0.01, 0.02, 0.03, 0.04, 0.05, 0.06])
+    assert w.p_two_sided == pytest.approx(stats.min_p_two_sided(6))
+    with pytest.raises(ValueError):
+        stats.min_p_two_sided(0)
+
+
 def test_win_loss_tie():
     assert stats.win_loss_tie([0.1, -0.2, 0.0, 0.0, 0.3]).model_dump() == {
         "wins": 2,

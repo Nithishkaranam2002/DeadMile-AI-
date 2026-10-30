@@ -82,7 +82,7 @@ cd lab
 uv run dmlab-harness make-splits          # done once (seed 20261030); refuses to run again
 uv run dmlab-harness register-champion    # routing-solver v1 = default PyVRP config, @champion
 uv run dmlab-harness compare --candidate ortools --suite quick
-caffeinate -i uv run dmlab-harness compare --candidate ortools --suite full    # ~25 min
+caffeinate -i uv run dmlab-harness compare --candidate ortools --suite full    # ~20 min fresh, ~4 min with champion reuse
 caffeinate -i uv run dmlab-harness selfcheck --suite full                      # ~40 min
 ```
 
@@ -99,7 +99,25 @@ caffeinate -i uv run dmlab-harness selfcheck --suite full                      #
   champion per instance, so r > 0 means the candidate is better. Wilcoxon
   signed rank on r (exact ties dropped and counted), and a seeded bootstrap 95%
   CI of the median r. Instances where either solver was infeasible on any run
-  are listed as not compared.
+  are listed as not compared. The gates use the two sided p
+  (`configs/gates.yaml`); both one sided p values are on the card too.
+* **Smallest reachable p**: an exact two sided Wilcoxon test with n non tied
+  pairs cannot go below 2 / 2^n. Validation and test (34 instances each) can
+  reach about 1e-10; tune (28) about 7e-9. A single slice cannot reach 0.05
+  (3 instances: 0.25, 4: 0.125, 7: 0.016), so slices are judged by their
+  median, not by a p value.
+* **Primary metric** is total distance. Vehicles used, distance per stop,
+  productivity, time window violations and cost per stop are on the card for
+  information only.
+* **Gate thresholds** from `configs/gates.yaml` are shown on every card as
+  information only (met or not met). The promotion gate itself comes in
+  Module 4.
+* **Champion reuse**: before running the champion, the harness looks for
+  earlier solve runs in MLflow with the same config, git commit (clean tree
+  only), instance, seed, time limit, data version and worker count, and runs
+  only what is missing (`--no-reuse` forces fresh runs). The card says how
+  many runs were reused. Reused runs ran under another machine load, which the
+  card states.
 * **Report card**: `report_card.md` and `report_card.json` on the compare run
   in MLflow experiment `harness`. The card covers wins, losses and ties in
   plain words, the statistics, a table per slice and the labels. The compare
@@ -112,10 +130,12 @@ caffeinate -i uv run dmlab-harness selfcheck --suite full                      #
 * **Test split**: only `dmlab/safeguards/test_split.py` (the gate code path)
   can read it. `tests/test_test_split_guard.py` proves this statically and at
   runtime. The CLI only accepts `--split tune|validation`.
-* **Self checks**: A/A (champion seeds 1-5 vs 6-10) must not show a
-  significant improvement (one sided p >= 0.05). OR Tools vs champion must
-  show the champion better (median r < 0, CI upper bound < 0, one sided
-  p < 0.05). A failed check means a harness bug. It is never rerun with other
+* **Self checks**: the A/A luck test runs the champion config with seeds 1-5
+  against the same config with seeds 6-10. It must not show a significant
+  difference (two sided p >= 0.05). OR Tools vs champion must show the
+  champion better (median r < 0, CI upper bound < 0, two sided p < 0.05).
+  Each card is in its own nested MLflow run, named "A/A check: champion vs
+  itself" and "Self check: ortools vs champion". A failed check means a harness bug. It is never rerun with other
   seeds.
 * **Workers**: the default is 5, the number of performance cores on the lab
   Mac. Under a fixed time limit, a run on an efficiency core gets fewer

@@ -9,6 +9,7 @@ import mlflow
 import pytest
 from mlflow import MlflowClient
 
+from dmlab.harness import compare as compare_module
 from dmlab.harness import registry
 from dmlab.harness.compare import compare
 from dmlab.harness.evaluate import EXPERIMENT, EvalSpec, plan_tasks
@@ -16,6 +17,7 @@ from dmlab.harness.runners import LocalRunner, SolverConfig
 from dmlab.harness.selfcheck import run_selfcheck
 from dmlab.harness.suites import Suite
 from dmlab.routing.runner import InstanceRef
+from dmlab.tracking import GitInfo
 from tests.conftest import TINY_SOLOMON
 
 
@@ -71,6 +73,8 @@ def test_compare_logs_report_card(store: MlflowClient):
     md = mlflow.artifacts.load_text(f"{run.info.artifact_uri}/report_card.md")
     card = json.loads(mlflow.artifacts.load_text(f"{run.info.artifact_uri}/report_card.json"))
     assert "## In plain words" in md and "## Per slice" in md and "once per instance" in md
+    assert "## Gate thresholds (information only)" in md and "## Fair runs" in md
+    assert "## Other metrics (information only" in md
     assert card["comparison"]["wilcoxon"]["p_greater"] == run.data.metrics["wilcoxon_p_greater"]
     assert card["provenance"]["git_commit"] == run.data.tags["git_commit"]
     children = store.search_runs([run.info.experiment_id], filter_string="tags.run_kind = 'solve'")
@@ -97,11 +101,65 @@ def test_selfcheck_runs_end_to_end(store: MlflowClient):
     checks, comparisons, run_id = run_selfcheck(
         SolverConfig(solver="pyvrp"), SolverConfig(solver="nn"), _suite(), [3, 4], LocalRunner(2)
     )
-    assert [c.name.split(":")[0] for c in checks][0] == "A/A"
+    assert checks[0].name.startswith("A/A") and checks[0].rule.startswith("two sided")
     assert set(comparisons) == {"aa", "vs_nn"}
+    assert comparisons["aa"].candidate.seeds_run == [3, 4]
+    assert comparisons["aa"].champion.seeds_run == [1, 2]
     arts = {a.path for a in store.list_artifacts(run_id)}
-    assert {"selfcheck.json", "aa", "vs_nn"} <= arts
+    assert {"selfcheck.json", "report_card_runs.json"} <= arts
+    exp = store.get_run(run_id).info.experiment_id
+    named = store.search_runs(
+        [exp], filter_string="attributes.run_name = 'A/A check: champion vs itself'"
+    )
+    assert len(named) == 1
+    card = mlflow.artifacts.load_text(f"{named[0].info.artifact_uri}/report_card.md")
+    assert card.startswith("# A/A check: champion vs itself") and "Luck test" in card
     with pytest.raises(ValueError):
         run_selfcheck(
             SolverConfig(solver="pyvrp"), SolverConfig(solver="nn"), _suite(), [2], LocalRunner(1)
         )
+
+
+@pytest.fixture
+def clean_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Reuse needs a clean tree; pretend the tree is clean at a fixed commit."""
+    fake = GitInfo(commit="f" * 40, dirty=False, changed_files=[])
+    monkeypatch.setattr(compare_module, "git_info", lambda: fake)
+
+
+def test_champion_runs_are_reused(store: MlflowClient, clean_git: None):
+    nn, pyvrp = SolverConfig(solver="nn"), SolverConfig(solver="pyvrp")
+    first, _ = compare(nn, pyvrp, _suite(), LocalRunner(2))
+    assert first.champion.reused_runs == 0
+    second, run_id = compare(nn, pyvrp, _suite(), LocalRunner(2))
+    assert second.champion.reused_runs == 2 and second.candidate.reused_runs == 0
+    assert sorted(second.champion.reused_run_ids) == sorted(
+        r.info.run_id for r in first_champion_runs(store, first)
+    )
+    assert second.overall.median_rel_improvement == first.overall.median_rel_improvement
+    md = mlflow.artifacts.load_text(f"{store.get_run(run_id).info.artifact_uri}/report_card.md")
+    assert "2 of 2 solve runs were reused" in md
+    # Other worker count or time limit: nothing is reused.
+    third, _ = compare(nn, pyvrp, _suite(), LocalRunner(1))
+    assert third.champion.reused_runs == 0
+    fourth, _ = compare(nn, pyvrp, _suite(), LocalRunner(2), reuse_champion=False)
+    assert fourth.champion.reused_runs == 0
+
+
+def first_champion_runs(store: MlflowClient, c) -> list:
+    ev = store.get_run(c.champion.run_id)
+    return store.search_runs(
+        [ev.info.experiment_id],
+        filter_string=f"tags.mlflow.parentRunId = '{c.champion.run_id}'",
+    )
+
+
+def test_no_reuse_from_a_dirty_tree(store: MlflowClient):
+    # The real tree may be dirty while developing; force dirty to be sure.
+    nn, pyvrp = SolverConfig(solver="nn"), SolverConfig(solver="pyvrp")
+    dirty = GitInfo(commit="e" * 40, dirty=True, changed_files=["x"])
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(compare_module, "git_info", lambda: dirty)
+        compare(nn, pyvrp, _suite(), LocalRunner(2))
+        again, _ = compare(nn, pyvrp, _suite(), LocalRunner(2))
+    assert again.champion.reused_runs == 0

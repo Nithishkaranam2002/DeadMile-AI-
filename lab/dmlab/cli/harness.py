@@ -60,9 +60,12 @@ def cmd_compare(args: argparse.Namespace) -> None:
     cand, cand_ref = _resolve(args.candidate, args.candidate_params)
     champ, champ_ref = _resolve(args.champion, None)
     suite = get_suite(args.suite, args.split)
-    c, run_id = compare(cand, champ, suite, LocalRunner(args.workers), cand_ref, champ_ref)
+    c, run_id = compare(
+        cand, champ, suite, LocalRunner(args.workers), cand_ref, champ_ref, not args.no_reuse
+    )
     for line in plain_words(c).values():
         print(line)
+    print(f"champion runs reused from MLflow: {c.champion.reused_runs} of {c.champion.total_runs}")
     print(f"report card: MLflow run {run_id}, artifacts report_card.md / report_card.json")
 
 
@@ -79,7 +82,10 @@ def cmd_selfcheck(args: argparse.Namespace) -> None:
     )
     for c in checks:
         print(f"{'PASS' if c.passed else 'FAIL'}  {c.name}  ({c.rule})  {c.observed}")
-    print(f"MLflow run {run_id}: aa/report_card.md, vs_ortools/report_card.md, selfcheck.json")
+    print(
+        f"MLflow selfcheck run {run_id}: nested runs 'A/A check: champion vs itself' and "
+        "'Self check: ortools vs champion' hold the report cards; selfcheck.json the verdicts"
+    )
     if not all(c.passed for c in checks):
         sys.exit(
             "SELF CHECK FAILED: the harness has a bug. Investigate; do not rerun with new seeds."
@@ -103,6 +109,11 @@ def main() -> None:
     c.add_argument("--candidate", required=True, help="solver name (pyvrp, ortools, nn) or @alias")
     c.add_argument("--candidate-params", help="JSON solver params for a named solver")
     c.add_argument("--champion", default="@champion")
+    c.add_argument(
+        "--no-reuse",
+        action="store_true",
+        help="run the champion fresh even when matching runs exist in MLflow",
+    )
     suite_args(c)
     c.set_defaults(func=cmd_compare)
     s = sub.add_parser("selfcheck", help="A/A and OR Tools vs champion")

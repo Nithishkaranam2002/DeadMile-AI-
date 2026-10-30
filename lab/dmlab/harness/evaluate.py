@@ -9,6 +9,10 @@ nested solve run per (instance, seed), logged with Module 1's
 Seed policy: seeded solvers run every seed of the suite. Solvers without a
 seed (OR Tools, nearest neighbor) run once per instance, with the first seed
 logged as unused.
+
+Reuse: a spec with ``reuse=True`` (only ever the champion config) first looks
+up matching earlier solve runs in MLflow (see reuse.py) and runs only what is
+missing. Reused runs are marked on every result and counted on the card.
 """
 
 from collections import defaultdict
@@ -19,10 +23,11 @@ import mlflow
 from pydantic import BaseModel
 
 from dmlab.data.solomon import solomon_class
+from dmlab.harness.reuse import TAG_INSTANCE, find_reusable, reuse_tags
 from dmlab.harness.runners import Runner, SolverConfig, SolveTask
 from dmlab.harness.splits import amazon_cities
 from dmlab.harness.suites import Suite
-from dmlab.routing.runner import log_solve_run
+from dmlab.routing.runner import load_instance, log_solve_run
 
 EXPERIMENT = "harness"
 MODULE = "2"
@@ -33,6 +38,7 @@ class EvalSpec(BaseModel):
     config: SolverConfig
     seeds: list[int]
     registry_ref: str | None = None  # e.g. "routing-solver v1 (@champion)"
+    reuse: bool = False  # look up matching earlier runs in MLflow first
 
 
 class InstanceRun(BaseModel):
@@ -51,6 +57,14 @@ class InstanceRun(BaseModel):
     data_version: str
     run_id: str | None
     error: str | None = None
+    # Information only metrics (never used for pass or fail).
+    distance_per_stop: float | None = None
+    productivity_name: str | None = None
+    productivity: float | None = None
+    time_window_violations: float | None = None
+    cost_per_stop: float | None = None
+    cost_note: str = ""
+    reused: bool = False  # True when taken from an earlier MLflow run
 
 
 class Evaluation(BaseModel):
@@ -65,6 +79,9 @@ class Evaluation(BaseModel):
     seed_policy: str
     runs: list[InstanceRun]
     run_id: str
+    workers: int | None = None
+    reused_runs: int = 0
+    reused_run_ids: list[str] = []
 
 
 def seeds_for(config: SolverConfig, seeds: list[int]) -> tuple[list[int], str]:
@@ -76,8 +93,12 @@ def seeds_for(config: SolverConfig, seeds: list[int]) -> tuple[list[int], str]:
     )
 
 
-def plan_tasks(specs: list[EvalSpec], suite: Suite) -> list[SolveTask]:
-    """Tasks of all evaluations, interleaved by instance and seed."""
+def plan_tasks(
+    specs: list[EvalSpec], suite: Suite, skip: set[tuple[str, str, int]] | None = None
+) -> list[SolveTask]:
+    """Tasks of all evaluations, interleaved by instance and seed. ``skip`` holds
+    (group, instance, seed) keys that are reused instead of solved."""
+    skip = skip or set()
     per_spec = []
     for spec in specs:
         seeds, _ = seeds_for(spec.config, spec.seeds)
@@ -92,6 +113,7 @@ def plan_tasks(specs: list[EvalSpec], suite: Suite) -> list[SolveTask]:
                 )
                 for ref in suite.refs
                 for seed in seeds
+                if (spec.group, _instance_name(ref.path, ref.kind), seed) not in skip
             ]
         )
     out: list[SolveTask] = []
@@ -121,9 +143,15 @@ def run_evaluations(
     groups = [s.group for s in specs]
     if len(set(groups)) != len(groups):
         raise ValueError("evaluation groups must be unique")
-    tasks = plan_tasks(specs, suite)
+    workers = getattr(runner, "workers", None)
+    reused = _lookup_reuse(specs, suite, git, workers)
+    skip = {(g, inst, seed) for g, found in reused.items() for (inst, seed) in found}
+    tasks = plan_tasks(specs, suite, skip)
     outcomes = defaultdict(list)
-    print(f"{len(tasks)} solve tasks, suite {suite.name}/{suite.split}, {suite.time_limit_s}s each")
+    print(
+        f"{len(tasks)} solve tasks ({len(skip)} reused from MLflow), "
+        f"suite {suite.name}/{suite.split}, {suite.time_limit_s}s each"
+    )
     for i, out in enumerate(runner.run(tasks), start=1):
         outcomes[out.task.group].append(out)
         t = out.task
@@ -169,9 +197,10 @@ def run_evaluations(
                     **{f"solver.{k}": v for k, v in spec.config.params.items()},
                 }
             )
-            runs = []
-            for out in sorted(outcomes[spec.group], key=lambda o: (o.task.ref.path, o.task.seed)):
-                runs.append(_instance_run(out, campaign, git))
+            extra = {"workers": workers, "time_limit_s": suite.time_limit_s}
+            runs = [_instance_run(out, campaign, git, extra) for out in outcomes[spec.group]]
+            runs += [_from_mlflow(r) for r in reused.get(spec.group, {}).values()]
+            runs.sort(key=lambda r: (r.instance, r.seed))
             ev = Evaluation(
                 group=spec.group,
                 config=spec.config,
@@ -184,12 +213,16 @@ def run_evaluations(
                 seed_policy=policy,
                 runs=runs,
                 run_id=run.info.run_id,
+                workers=workers,
+                reused_runs=sum(1 for r in runs if r.reused),
+                reused_run_ids=[r.run_id for r in runs if r.reused and r.run_id],
             )
             mlflow.log_metrics(
                 {
                     "runs": len(runs),
                     "errors": sum(1 for r in runs if r.error),
                     "feasible_runs": sum(1 for r in runs if r.feasible),
+                    "reused_runs": ev.reused_runs,
                 }
             )
             mlflow.log_dict(ev.model_dump(), "evaluation.json")
@@ -197,7 +230,63 @@ def run_evaluations(
     return evaluations
 
 
-def _instance_run(out: Any, campaign: str, git: dict[str, Any]) -> InstanceRun:
+def _lookup_reuse(
+    specs: list[EvalSpec], suite: Suite, git: dict[str, Any], workers: int | None
+) -> dict[str, dict[tuple[str, int], Any]]:
+    """group -> {(instance, seed): earlier MLflow run} for specs with reuse on."""
+    wanted_specs = [s for s in specs if s.reuse]
+    if not wanted_specs or workers is None or git["dirty"]:
+        return {}
+    exp = mlflow.get_experiment_by_name(EXPERIMENT)
+    if exp is None:
+        return {}
+    versions = {
+        _instance_name(ref.path, ref.kind): load_instance(ref).data_version for ref in suite.refs
+    }
+    out = {}
+    for spec in wanted_specs:
+        seeds, _ = seeds_for(spec.config, spec.seeds)
+        wanted = {(name, s): v for name, v in versions.items() for s in seeds}
+        out[spec.group] = find_reusable(
+            exp.experiment_id, spec.config, git, workers, suite.time_limit_s, wanted
+        )
+    return out
+
+
+def _from_mlflow(run: Any) -> InstanceRun:
+    """Rebuild a result from an earlier solve run (tags, params, metrics)."""
+    tags, m = run.data.tags, run.data.metrics
+    prod_name = next(
+        (k for k in ("stops_per_driver_hour", "stops_per_100_time_units") if k in m), None
+    )
+    return InstanceRun(
+        instance=tags[TAG_INSTANCE],
+        slice=tags["slice"],
+        source=tags["source"],
+        seed=int(run.data.params["seed"]),
+        seed_used=tags.get("seed_used_by_solver") == "true",
+        feasible=m.get("feasible") == 1.0,
+        total_distance=m.get("total_distance"),
+        vehicles_used=int(m["vehicles_used"]) if "vehicles_used" in m else None,
+        runtime_s=m.get("runtime_s"),
+        distance_unit=tags.get("distance_unit", ""),
+        distance_label=tags.get("distance_label", ""),
+        labels=tags.get("labels", "").split(" | ") if tags.get("labels") else [],
+        data_version=tags.get("data_version", ""),
+        run_id=run.info.run_id,
+        distance_per_stop=m.get("distance_per_stop"),
+        productivity_name=prod_name,
+        productivity=m.get(prod_name) if prod_name else None,
+        time_window_violations=m.get("time_window_violations"),
+        cost_per_stop=m.get("cost_per_stop"),
+        cost_note=tags.get("cost_note", ""),
+        reused=True,
+    )
+
+
+def _instance_run(
+    out: Any, campaign: str, git: dict[str, Any], extra: dict[str, Any]
+) -> InstanceRun:
     t = out.task
     name = _instance_name(t.ref.path, t.ref.kind)
     if out.error:
@@ -219,7 +308,10 @@ def _instance_run(out: Any, campaign: str, git: dict[str, Any]) -> InstanceRun:
             error=out.error,
         )
     p = out.payload
-    run_id = log_solve_run(p, campaign, git, module=MODULE)
+    tags = {"group": t.group}
+    if extra["workers"] is not None:
+        tags |= reuse_tags(t.config, name, extra["workers"], extra["time_limit_s"])
+    run_id = log_solve_run(p, campaign, git, module=MODULE, extra_tags=tags)
     inst, m = p["instance"], p["metrics"]
     return InstanceRun(
         instance=name,
@@ -236,4 +328,10 @@ def _instance_run(out: Any, campaign: str, git: dict[str, Any]) -> InstanceRun:
         labels=inst["labels"],
         data_version=inst["data_version"],
         run_id=run_id,
+        distance_per_stop=m["distance_per_stop"],
+        productivity_name=m["productivity_name"],
+        productivity=m["productivity"],
+        time_window_violations=m["time_window_violations"],
+        cost_per_stop=m["cost_per_stop"],
+        cost_note=m["cost_note"],
     )

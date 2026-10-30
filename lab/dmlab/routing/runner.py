@@ -115,7 +115,11 @@ def run_task(
 
 
 def log_solve_run(
-    payload: dict[str, Any], campaign: str, git: dict[str, Any], module: str = "1"
+    payload: dict[str, Any],
+    campaign: str,
+    git: dict[str, Any],
+    module: str = "1",
+    extra_tags: dict[str, str] | None = None,
 ) -> str:
     """Log one solve as an MLflow run, nested under the active run."""
     inst, res, rep, m = (payload[k] for k in ("instance", "result", "report", "metrics"))
@@ -139,6 +143,7 @@ def log_solve_run(
         "labels": " | ".join(inst["labels"]),
         "cost_note": m["cost_note"],
     }
+    tags.update(extra_tags or {})
     if payload["bks_used"]:
         tags["bks_objective"] = "distance_only, dimacs_trunc1 (floor(10*d))"
     params = {

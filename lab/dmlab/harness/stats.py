@@ -6,8 +6,8 @@ so r > 0 means the candidate is better (shorter distance), r < 0 worse.
 
 * Seeds are averaged per instance first, then one r per instance.
 * Wilcoxon signed rank on the r values (scipy, zero_method "wilcox": exact
-  zeros are ties, dropped and counted). One sided "greater" (candidate better)
-  is what the gate uses; "less" and two sided are reported too.
+  zeros are ties, dropped and counted). The two sided p is what the gates use
+  (configs/gates.yaml); both one sided p values are reported too.
 * Bootstrap CI of the median r: resample instances with replacement, seeded,
   percentile interval.
 """
@@ -110,6 +110,14 @@ def bootstrap_median_ci(
     alpha = (1 - level) / 2
     lo, hi = np.quantile(medians, [alpha, 1 - alpha])
     return float(lo), float(hi)
+
+
+def min_p_two_sided(n_nonzero: int) -> float:
+    """Smallest two sided p an exact Wilcoxon test can reach with n non tied
+    pairs: every pair favouring one side, 2 / 2^n."""
+    if n_nonzero < 1:
+        raise ValueError("need at least one non tied pair")
+    return 2.0 / 2**n_nonzero
 
 
 def median(r: Sequence[float]) -> float | None:
