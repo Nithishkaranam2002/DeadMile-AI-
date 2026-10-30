@@ -194,3 +194,13 @@ def test_agent_suites_are_tune_and_validation():
         pytest.skip("benchmark data not downloaded on this machine")
     assert quick.split == "tune" and full.split == "validation"
     assert quick.time_limit_s < full.time_limit_s
+
+
+def test_litellm_does_not_load_the_product_env():
+    import os
+
+    import dmlab.agent  # noqa: F401
+
+    # Otherwise LiteLLM loads the repo's .env (OTEL endpoint, LITELLM_LOG) on import.
+    assert os.environ["LITELLM_MODE"] == "PRODUCTION"
+    assert os.environ["LITELLM_LOCAL_MODEL_COST_MAP"] == "True"

@@ -102,7 +102,7 @@ def build(state: CycleState, extra: dict[str, Any]) -> dict[str, Any]:
 
 
 def _pct(v: float | None) -> str:
-    return "n/a" if v is None else f"{100 * v:+.2f}%"
+    return "n/a" if v is None else f"{100 * v:+.3f}%"
 
 
 def _ci(e: dict[str, Any] | None) -> str:

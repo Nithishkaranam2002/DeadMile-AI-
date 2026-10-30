@@ -436,7 +436,7 @@ def _summary_metrics(prefix: str, s: Any) -> dict[str, float]:
 
 
 def _pct(v: float | None) -> str:
-    return "n/a" if v is None else f"{100 * v:+.2f}%"
+    return "n/a" if v is None else f"{100 * v:+.3f}%"
 
 
 def evaluate(state: CycleState, runtime: Runtime[CycleContext]) -> dict[str, Any]:
