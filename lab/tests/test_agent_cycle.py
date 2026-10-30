@@ -239,8 +239,10 @@ def test_cpu_budget_stops_before_running(lab):
     )
     rep = cycle(memory, llm)
     assert rep["stop_reason"].startswith("CPU budget")
+    assert rep["end_reason"] is None
     (row,) = rep["ranked"]
     assert row["status"] == "rejected" and row["reason"].startswith("not run: CPU budget")
+    assert memory.count() == 0  # a variant that never ran is not remembered
 
 
 def test_wall_clock_budget_stops_the_cycle(lab):

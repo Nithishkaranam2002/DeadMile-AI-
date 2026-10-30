@@ -145,7 +145,11 @@ class ExperimentMemory:
             ]
         )
         points, _ = self.client.scroll(self.collection, scroll_filter=flt, limit=20)
-        return [p.payload for p in points]
+        # Entries for variants that never ran (stored by an early Module 3 build
+        # when a budget stopped the cycle) hold no result and do not count.
+        return [
+            p.payload for p in points if not str(p.payload.get("reason", "")).startswith("not run")
+        ]
 
     def count(self) -> int:
         return self.client.count(self.collection).count

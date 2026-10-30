@@ -512,11 +512,11 @@ def reflect(state: CycleState, runtime: Runtime[CycleContext]) -> dict[str, Any]
     lessons = {x.vid: x.lesson for x in reflection.lessons} if reflection else {}
     for v in this_round:
         v.lesson = lessons.get(v.vid)
-        if v.variant is None or v.reason.startswith("already tested"):
-            continue  # nothing new to remember
+        if v.variant is None or v.reason.startswith(("already tested", "not run")):
+            continue  # nothing new to remember (a variant that never ran has no result)
         v.memory_id = ctx.memory.store(_memory_entry(v, state))
     keep = bool(reflection and reflection.continue_search and can_continue)
-    if not keep and not update.get("stop_reason"):
+    if not keep and not update.get("stop_reason") and not state.stop_reason:
         if slots <= 0:
             end = f"variant cap reached ({ctx.budget.limits.max_variants} proposals)"
         elif state.round >= state.max_rounds:
