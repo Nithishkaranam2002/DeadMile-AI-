@@ -207,7 +207,7 @@ Keep the lab separate from the existing product files:
 |---|---|---|
 | 0 | Lab setup (skeleton, MLflow, lab API) | done |
 | 1 | Routing core and baselines | done |
-| 2 | Evaluation harness | not started |
+| 2 | Evaluation harness | done |
 | 3 | Experiment agent | not started |
 | 4 | Safeguards and promotion gates | not started |
 | 5a | Forecasting backtest | not started |
