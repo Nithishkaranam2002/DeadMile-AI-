@@ -1,0 +1,50 @@
+# Datasets used by the lab: where they come from, how they are converted,
+# and which values are assumptions. Raw files live under lab/data/raw and are
+# never committed. The sha256 values below are the data version logged on
+# every run.
+
+solomon:
+  label: "benchmark (abstract distance units, not miles)"
+  source_url: "https://www.sintef.no/globalassets/project/top/vrptw/solomon/solomon-100.zip"
+  archive_sha256: "8a0a72cbe6b7f8f9988ace4ebde0378ec34943acaaac47f2c408915e41887747"
+  raw_dir: "data/raw/solomon"
+  # DIMACS convention: integer distance = floor(10 * euclidean distance).
+  # Travel time equals distance, so time windows and service times are also
+  # multiplied by 10. Displayed values are divided by 10 again.
+  scale: 10
+
+bks:
+  # Distance only best known solutions (DIMACS convention, truncated to one
+  # decimal), taken from CVRPLIB through the PyVRP Instances repository at a
+  # pinned commit. Each one is replayed by our own feasibility checker before
+  # it is written to data/bks.csv.
+  dimacs_solutions_url: "https://raw.githubusercontent.com/PyVRP/Instances/{commit}/VRPTW/Solomon/{name}.sol"
+  dimacs_solutions_commit: "7474b068a8effa7f39448b241314b615c9271525"
+  # Hierarchical objective (fewest vehicles, then distance, double precision).
+  # Reference only: never used for a gap.
+  sintef_url: "https://www.sintef.no/projectweb/top/vrptw/100-customers/"
+
+amazon:
+  label: "Amazon Last Mile Routing Research Challenge 2021, evaluation set (CC BY-NC 4.0)"
+  license: "CC BY-NC 4.0 (non-commercial)"
+  base_url: "https://amazon-last-mile-challenges.s3.amazonaws.com/almrrc2021/almrrc2021-data-evaluation/model_apply_inputs"
+  files:
+    route_data: {name: "eval_route_data.json", size_bytes: 37777768}
+    package_data: {name: "eval_package_data.json", size_bytes: 166201035}
+    travel_times: {name: "eval_travel_times.json", size_bytes: 843104906}
+  raw_dir: "data/raw/amazon"
+  processed_dir: "data/processed/amazon"
+  cities:
+    Boston: ["DBO"]     # station code prefixes
+    Chicago: ["DCH"]
+  # Subset: route ids sorted, shuffled with this seed, then the first routes
+  # that pass the data checks (one station, no contradictory time windows)
+  # are kept, per city. Selection never looks at solver results.
+  subset_seed: 20261029
+  routes_per_city: 20
+  # Assumptions (not in the data). Labeled as assumptions wherever shown.
+  assumptions:
+    vans_per_route: 2         # identical vans, each with the route's executor capacity
+    shift_hours: 10           # max route duration and planning horizon from departure
+  # The selected and excluded route ids are written by `dmlab-data fetch-amazon`
+  # to configs/amazon_subset.yaml, which is committed.

@@ -16,3 +16,5 @@ mlflow.db
 # Raw and processed data: never committed, except tiny test fixtures
 data/*
 !data/.gitkeep
+# Best known solutions table (small, verified, committed)
+!data/bks.csv
