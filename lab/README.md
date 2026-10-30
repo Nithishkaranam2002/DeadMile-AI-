@@ -10,6 +10,7 @@ Pickup and delivery experiment lab. See `../CLAUDE.md` for the full design and r
 | `make lab-down` | Stop only MLflow and the lab API. Volumes are kept. |
 | `make lab-test` | Run the lab tests (no server or downloads needed) |
 | `make lab-lint` | Run ruff lint and format checks |
+| `make lab-agent ARGS="--confirm-top 1"` | One experiment agent cycle (needs `uv sync --group ml` once) |
 
 ## Local environment
 
@@ -149,3 +150,59 @@ caffeinate -i uv run dmlab-harness selfcheck --suite full                      #
   iterations, which adds noise to the comparison.
 * `LocalRunner` uses a process pool. A `TemporalRunner` can be added later
   with the same `SolveTask` / `TaskOutcome` contract (`dmlab/harness/runners.py`).
+
+## Experiment agent (Module 3)
+
+```
+cd lab
+uv sync --group ml                                   # torch + sentence-transformers (also for Module 5a)
+uv run --group ml dmlab-agent cycle --confirm-top 1  # main model (LAB_LLM_MODEL)
+uv run --group ml dmlab-agent cycle --offline --quick-only   # Ollama (LAB_LLM_OFFLINE_MODEL)
+uv run --group ml dmlab-agent cycle --budgets my_low_budgets.yaml
+```
+
+* **Graph** (LangGraph 1.2, `dmlab/agent/graph.py`): load_context ->
+  hypothesize -> propose (screening) -> run_quick -> evaluate -> reflect ->
+  loop or confirm -> nominate -> finalize. A budget stop goes straight to
+  finalize. `build_graph(tail=...)` puts extra nodes between nominate and
+  finalize; Module 4 adds the promotion gate and the human approval interrupt
+  there. The graph runs with a checkpointer and a thread id.
+* **Selection without reuse of data**: screen on the quick suite (tune split,
+  5 s), confirm the top 1 or 2 on the full validation suite (30 s, the gate's
+  time limit), and only the promotion gate uses test. The agent has no code
+  path to the test split (`tests/test_agent_units.py` checks it statically).
+* **Variants** (`dmlab/agent/variants.py`): parameter (PyVRP 0.14 search
+  settings, OR Tools strategy and metaheuristic), formulation (tightened
+  copy for the solver, measured on the original instance; see
+  `dmlab/routing/formulation.py`), code (always rejected until the Module 4
+  sandbox). No time limit field exists; proposals that try to set one are
+  rejected. Invalid proposals are rejected with the validation error, never
+  repaired. Exact repeats of a config already tested against the same
+  champion are rejected using memory.
+* **Nomination**: a confirmed variant must meet every check of
+  `gates.yaml` on full validation (feasibility, median, Wilcoxon, CI,
+  slice regression, runtime). The best one is registered and gets
+  @challenger; @champion never moves here. No nominee is a valid result.
+* **Budgets** (`configs/budgets.yaml`, rules not results): per run wall
+  clock (enforced in the worker), variants and CPU minutes per cycle (each
+  batch is estimated before it starts), LLM tokens and dollars per session
+  (each call is checked with its worst case first; earlier cycles of a
+  `--session` are summed from MLflow). A hit stops the cycle cleanly and the
+  reason is on the report and the parent run's `stop_reason` tag.
+* **LLM**: LiteLLM. Cloud models get the pydantic schema as JSON schema
+  output; local Ollama models get JSON mode with the schema in the prompt
+  (Ollama 0.16.2 refuses the schema as a grammar for deepseek-r1:8b). Cost
+  from LiteLLM's per call cost tracking; local models cost 0 USD. Every
+  prompt and response is an artifact under `llm/` on the cycle run, with
+  secret looking environment values redacted. Tests use `FakeLLM`.
+* **Memory**: Qdrant collection `lab_experiment_memory` (localhost:6333,
+  published by `docker-compose.lab.yml`), embeddings from the cached
+  `sentence-transformers/all-MiniLM-L6-v2` at a pinned revision, loaded
+  offline. Stores hypothesis, variant, result and lesson.
+* **MLflow** (experiment `agent`): one parent run per cycle (report,
+  budgets, LLM artifacts, usage metrics), one child run per variant that ran
+  (quick evaluation and report card, confirmation nested under it), and
+  champion baseline runs. Champion solve runs are reused across the harness
+  and agent experiments by solver fingerprint. Tracing: `mlflow.langchain`
+  and `mlflow.litellm` autolog.
+

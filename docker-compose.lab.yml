@@ -4,6 +4,12 @@
 # Or simply: make lab-up / make lab-down
 
 services:
+  # Existing Qdrant (main compose file, unchanged), published on localhost only
+  # so the experiment agent CLI on the host can reach its memory collection.
+  qdrant:
+    ports:
+      - "127.0.0.1:${LAB_QDRANT_PORT:-6333}:6333"
+
   mlflow:
     build:
       context: ./lab

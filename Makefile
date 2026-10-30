@@ -148,7 +148,7 @@ health: ## Check health of all services via gateway
 # ===========================================================================
 # Experiment lab (see CLAUDE.md). Lab services live in docker-compose.lab.yml.
 # ===========================================================================
-.PHONY: lab-up lab-down lab-test lab-lint
+.PHONY: lab-up lab-down lab-test lab-lint lab-agent
 
 COMPOSE_LAB := docker compose -f docker-compose.yml -f docker-compose.lab.yml
 
@@ -166,3 +166,6 @@ lab-test: ## Lab: run lab tests
 
 lab-lint: ## Lab: ruff lint and format check
 	cd lab && uv run ruff check . && uv run ruff format --check .
+
+lab-agent: ## Lab: one experiment agent cycle (ARGS="--confirm-top 1" or "--offline --quick-only")
+	cd lab && uv run --group ml dmlab-agent cycle $(ARGS)
