@@ -1,0 +1,19 @@
+# Cost assumptions for business views. Every value here is an ASSUMPTION,
+# not a measured result, and must be labeled as such next to any number
+# derived from it in the UI or reports.
+#
+# cost per stop = (driver_hours * cost_per_driver_hour
+#                  + distance * cost_per_distance_unit) / stops
+#
+# Structure only: values are null until decided and committed.
+
+label: "assumption"
+
+currency: null                    # e.g. USD
+cost_per_driver_hour: null
+# Solomon distances are abstract units, not miles. Keep a separate rate per
+# distance unit so benchmark and real-world numbers are never mixed.
+cost_per_distance_unit:
+  solomon_unit: null              # abstract benchmark distance unit
+  km: null                        # Amazon routes (haversine distance)
+source_note: null                 # where the assumed values came from

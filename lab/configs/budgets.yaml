@@ -1,0 +1,14 @@
+# Compute, time and LLM cost limits for the experiment agent.
+# Structure only: every value is null until it is decided and committed.
+# Hitting any budget stops the agent cleanly and logs the reason.
+
+per_run:
+  wall_clock_seconds: null        # max wall clock time for one solver run
+
+per_cycle:
+  max_variants: null              # max variants proposed and run in one agent cycle
+  max_cpu_minutes: null           # max total CPU minutes across one cycle
+
+per_session:
+  llm_max_tokens: null            # total LLM tokens (prompt + completion) per session
+  llm_max_usd: null               # LLM spend cap per session, from LiteLLM per call cost tracking

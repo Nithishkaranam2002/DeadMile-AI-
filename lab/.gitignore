@@ -1,0 +1,18 @@
+# Lab environment and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# MLflow local stores and artifacts (real runs live in the mlflow container)
+mlruns/
+mlartifacts/
+mlflow.db
+*.db
+*.sqlite
+*.sqlite3
+
+# Raw and processed data: never committed, except tiny test fixtures
+data/*
+!data/.gitkeep

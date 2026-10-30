@@ -1,0 +1,28 @@
+# Promotion gate thresholds.
+# Starting values come from CLAUDE.md ("Safeguards" section). They are policy,
+# not results. Never lower them to make a challenger pass (CLAUDE.md hard rule 9).
+# Any change must be a reviewed commit that says why.
+
+feasibility:
+  # Challenger must be feasible on this share of gate instances (1.0 = 100%).
+  min_feasible_share: 1.0
+
+improvement:
+  # Primary metric for the routing gate.
+  metric: total_distance
+  # Median relative distance improvement vs champion, as a fraction (0.005 = 0.5%).
+  min_median_relative_improvement: 0.005
+  # Wilcoxon signed rank test on per instance relative differences (seeds averaged first).
+  max_wilcoxon_p_value: 0.05
+  # Lower bound of the bootstrap 95% CI of the median relative improvement must exceed this.
+  ci_level: 0.95
+  min_ci_lower_bound: 0.0
+
+regression:
+  # No slice (Solomon class, Amazon city) may be worse than the champion by more
+  # than this fraction (0.003 = 0.3%).
+  max_slice_regression: 0.003
+
+runtime:
+  # Challenger runtime must be at most this multiple of the champion's runtime.
+  max_runtime_ratio: 1.2

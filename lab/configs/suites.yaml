@@ -1,0 +1,37 @@
+# Benchmark suites and frozen data splits.
+# Structure only. Splits are generated once with a fixed seed (Module 2),
+# stratified by Solomon class and Amazon city, and then committed.
+# The test split is read only by the promotion gate. The agent never loads it.
+
+splits:
+  # Seed used to create the splits. Set once in Module 2, then never changed.
+  seed: null
+  # Date the splits were frozen (YYYY-MM-DD).
+  frozen_on: null
+  tune:
+    solomon: []        # instance names, e.g. from classes C1, C2, R1, R2, RC1, RC2
+    amazon: []         # route ids, Boston and Chicago subset
+  validation:
+    solomon: []
+    amazon: []
+  test:
+    solomon: []
+    amazon: []
+
+suites:
+  quick:
+    # Validation subset used during agent iterations.
+    split: validation
+    instances: []      # subset of splits.validation, chosen in Module 2
+    seeds: []          # 2 seeds per CLAUDE.md
+    time_limit_seconds: null
+  full:
+    # All instances of a split, used by the promotion gates.
+    split: null        # validation or test
+    seeds: []          # 5 seeds per CLAUDE.md
+    time_limit_seconds: null
+
+slices:
+  # Results are always reported per slice, not only overall.
+  solomon_classes: [C1, C2, R1, R2, RC1, RC2]
+  amazon_cities: [Boston, Chicago]
