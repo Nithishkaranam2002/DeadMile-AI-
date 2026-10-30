@@ -76,17 +76,16 @@ def fairness(c: Comparison) -> list[str]:
         f"same number of workers ({c.workers}), with their solves interleaved on one pool.",
         f"Runtime gate: {RUNTIME_NOTE}.",
     ]
-    ch = c.champion
-    if ch.reused_runs:
-        notes.append(
-            f"Champion: {ch.reused_runs} of {ch.total_runs} solve runs were reused from earlier "
-            "MLflow runs with the same config, git commit (clean tree), instance, seed, time "
-            "limit, data version and worker count, instead of being run again. Reused runs ran "
-            "at another time, under whatever else the machine was doing then."
-        )
-    else:
-        notes.append(f"Champion: all {ch.total_runs} solve runs ran fresh for this comparison.")
-    notes.append(f"Candidate: all {c.candidate.total_runs} solve runs ran fresh.")
+    for name, side in (("Champion", c.champion), ("Candidate", c.candidate)):
+        if side.reused_runs:
+            notes.append(
+                f"{name}: {side.reused_runs} of {side.total_runs} solve runs were reused from "
+                "earlier MLflow runs with the same config, git commit (clean tree), instance, "
+                "seed, time limit, data version and worker count, instead of being run again. "
+                "Reused runs ran at another time, under whatever else the machine was doing then."
+            )
+        else:
+            notes.append(f"{name}: all {side.total_runs} solve runs ran fresh for this comparison.")
     return notes
 
 
