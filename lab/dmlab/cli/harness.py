@@ -34,7 +34,7 @@ def make_splits(_: argparse.Namespace) -> None:
         raise SystemExit(f"expected 56 Solomon instances in {raw}, found {len(names)}")
     amazon = splits.amazon_cities()
     s = splits.make_splits(names, amazon, SPLIT_SEED)
-    quick = splits.make_quick(s["validation"], amazon, SPLIT_SEED)
+    quick = splits.make_quick(s["tune"], amazon, SPLIT_SEED)
     splits.write_frozen(s, quick, SPLIT_SEED, date.today().isoformat())
     for name in splits.SPLIT_NAMES:
         print(f"{name:10s} solomon={len(s[name]['solomon'])} amazon={len(s[name]['amazon'])}")

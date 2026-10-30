@@ -76,15 +76,17 @@ def make_splits(
     return splits
 
 
-def make_quick(
-    validation: dict[str, list[str]], amazon: dict[str, list[str]], seed: int
-) -> list[str]:
-    """Seeded, stratified subset of the validation split for the quick suite."""
+def make_quick(tune: dict[str, list[str]], amazon: dict[str, list[str]], seed: int) -> list[str]:
+    """Seeded, stratified subset of the tune split for the quick suite.
+
+    The agent screens on tune (quick suite), confirms on validation (full
+    suite) and the gate uses test, so no split both selects and confirms.
+    """
     strata: dict[str, list[str]] = {}
-    for name in validation["solomon"]:
+    for name in tune["solomon"]:
         strata.setdefault(solomon_class(name), []).append(name)
     city_of = {rid: city for city, ids in amazon.items() for rid in ids}
-    for rid in validation["amazon"]:
+    for rid in tune["amazon"]:
         strata.setdefault(city_of[rid], []).append(rid)
     picked: list[str] = []
     for stratum in sorted(strata):

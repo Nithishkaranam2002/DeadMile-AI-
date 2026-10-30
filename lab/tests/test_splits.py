@@ -49,11 +49,14 @@ def test_regenerating_with_the_seed_gives_the_committed_splits():
         assert regenerated[s]["amazon"] == COMMITTED[s]["amazon"]
 
 
-def test_quick_suite_is_a_stratified_validation_subset():
+def test_quick_suite_is_a_stratified_tune_subset():
     quick = SUITES["suites"]["quick"]
+    assert quick["split"] == "tune"
+    tune = COMMITTED["tune"]
+    assert set(quick["instances"]) <= set(tune["solomon"]) | set(tune["amazon"])
+    assert quick["instances"] == splits.make_quick(tune, splits.amazon_cities(), COMMITTED["seed"])
     val = COMMITTED["validation"]
-    assert set(quick["instances"]) <= set(val["solomon"]) | set(val["amazon"])
-    assert quick["instances"] == splits.make_quick(val, splits.amazon_cities(), COMMITTED["seed"])
+    assert not set(quick["instances"]) & (set(val["solomon"]) | set(val["amazon"]))
     classes = Counter(solomon_class(n) for n in quick["instances"] if not n.startswith("Route"))
     assert classes == Counter({c: 1 for c in ["C1", "C2", "R1", "R2", "RC1", "RC2"]})
     assert quick["seeds"] == [1, 2] and quick["time_limit_seconds"] == 5

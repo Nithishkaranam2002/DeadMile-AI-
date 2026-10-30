@@ -109,7 +109,7 @@ Business view: cost per stop = (driver hours times cost per driver hour + distan
 ## Evaluation harness rules
 
 1. Splits are frozen in configs/suites.yaml, created once with a fixed seed and committed. They are stratified by Solomon class and by Amazon city. Three splits: tune, validation, test.
-2. Two suite sizes. Quick suite: a validation subset, 2 seeds, short time limit, used during agent iterations. Full suite: all instances of a split, 5 seeds, used by gates.
+2. Two suite sizes. Quick suite: a tune subset (stratified by slice), 2 seeds, short time limit, used during agent iterations to screen variants. Full suite: all instances of a split, 5 seeds: the agent confirms on full validation, the gate uses full test. No split is used for both selecting and confirming.
 3. Compare candidate vs champion with paired tests. Average seeds per instance first, then run a Wilcoxon signed rank test on per instance relative differences, plus a bootstrap 95% confidence interval of the median relative improvement.
 4. Always report results per slice (each Solomon class and each Amazon city), not only the overall number.
 5. The test split is used only by the promotion gate, once per nominated challenger. The agent never sees test metrics, only pass or fail. This prevents overfitting the benchmark and handles the problem of testing many candidates (select on validation, confirm once on test).
@@ -135,7 +135,7 @@ Rules:
 
 1. Proposals use structured output validated by pydantic. Invalid proposals are rejected and logged, never silently repaired.
 2. Before proposing, the agent retrieves similar past experiments from Qdrant. After evaluating, it stores hypothesis, variant, result and lesson.
-3. The agent iterates on the quick validation suite only. It has no code path that can load the test split.
+3. The agent screens on the quick (tune) suite and confirms on the full validation suite. It has no code path that can load the test split.
 4. Every cycle is one parent MLflow run with child runs per variant, including LLM token usage and cost.
 
 ## Safeguards

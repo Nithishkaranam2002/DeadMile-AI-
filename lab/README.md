@@ -90,8 +90,8 @@ caffeinate -i uv run dmlab-harness selfcheck --suite full                      #
 * **Splits** (`configs/suites.yaml`, frozen and committed): thirds per Solomon
   class and per Amazon city, leftovers to validation then test. Solomon
   16 / 20 / 20, Amazon 12 / 14 / 14 (tune / validation / test).
-* **Suites**: quick = 10 validation instances (1 per Solomon class, 2 per
-  city), seeds 1-2, 5 s. Full = every instance of a split, seeds 1-5, 30 s.
+* **Suites**: quick = 10 tune instances (1 per Solomon class, 2 per
+  city), seeds 1-2, 5 s, used by the agent to screen variants. Full = every instance of a split, seeds 1-5, 30 s.
   Seeds 6-10 are used only by the A/A self check.
 * **Seeds**: seeded solvers (PyVRP) run every seed and are averaged per
   instance. Solvers without a seed (OR Tools, nearest neighbor) run once per

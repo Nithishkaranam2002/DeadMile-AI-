@@ -1,7 +1,7 @@
 """Benchmark suites: which instances, which seeds, which time limit.
 
-* quick: the frozen validation subset, 2 seeds, short time limit. Used during
-  agent iterations.
+* quick: the frozen tune subset, 2 seeds, short time limit. Used during
+  agent iterations (screening). Confirmation uses the full validation suite.
 * full: every instance of a split, 5 seeds. Used by the gates.
 
 Suites are built from tune or validation only; ``splits`` refuses the test
@@ -61,14 +61,14 @@ class Suite(BaseModel):
 def quick_suite() -> Suite:
     s = splits.suite_settings()
     q = s["quick"]
-    if q["split"] != "validation":
-        raise ValueError("the quick suite must be a validation subset")
+    if q["split"] != "tune":
+        raise ValueError("the quick suite must be a tune subset")
     names = s["quick_instances"]
-    if not set(names) <= set(splits.split_names("validation")):
-        raise ValueError("quick suite instances must all be in the validation split")
+    if not set(names) <= set(splits.split_names("tune")):
+        raise ValueError("quick suite instances must all be in the tune split")
     return Suite(
         name="quick",
-        split="validation",
+        split="tune",
         refs=splits.refs_for_names(names),
         seeds=list(q["seeds"]),
         time_limit_s=float(q["time_limit_seconds"]),

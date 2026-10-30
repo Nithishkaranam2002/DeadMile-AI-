@@ -118,20 +118,23 @@ splits:
 
 suites:
   quick:
-    # Validation subset used during agent iterations: 1 instance per Solomon
-    # class and 2 per Amazon city, picked with the split seed.
-    split: validation
+    # Tune subset used during agent iterations (screening): 1 instance per
+    # Solomon class and 2 per Amazon city, picked with the split seed. The
+    # agent screens on tune, confirms on validation (full suite), and only the
+    # promotion gate uses test, so no split both selects and confirms.
+    # Moved from validation to tune in Module 3, before any agent cycle ran.
+    split: tune
     instances:
-      - RouteID_309a335b-e1c6-4b40-8026-136bda97374b
-      - RouteID_587876a2-40af-4843-b7cf-4bdff6ccb775
-      - C104
-      - C205
-      - RouteID_35cfd8d0-1b27-4979-b757-068be94e0bc0
-      - RouteID_dc0262d6-f3df-47b5-8276-c8f2942b6e4c
-      - R101
-      - R211
-      - RC102
-      - RC208
+      - RouteID_673e786f-f2c6-4f78-825d-53e22baeb620
+      - RouteID_6e85765e-d988-44e7-8e42-a932e2136834
+      - C107
+      - C203
+      - RouteID_18ebc6f1-1bd5-4d79-bda6-3740014704eb
+      - RouteID_e8e95e75-a3c5-4425-9c88-2b413d353542
+      - R107
+      - R203
+      - RC101
+      - RC204
     seeds: [1, 2]
     time_limit_seconds: 5
   full:
