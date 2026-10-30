@@ -155,12 +155,14 @@ def _side_metrics(runs: list[Any]) -> SideMetrics:
         return stats.seed_mean(vals) if vals else None
 
     names = {r.productivity_name for r in ok if r.productivity_name}
+    # One productivity unit per side and slice; mixed units are not averaged.
+    prod_name = next(iter(names)) if len(names) == 1 else None
     notes = sorted({r.cost_note for r in ok if r.cost_note})
     return SideMetrics(
         vehicles_used=mean_of("vehicles_used"),
         distance_per_stop=mean_of("distance_per_stop"),
-        productivity_name=names.pop() if len(names) == 1 else None,
-        productivity=mean_of("productivity") if len(names) == 1 else None,
+        productivity_name=prod_name,
+        productivity=mean_of("productivity") if prod_name else None,
         time_window_violations=mean_of("time_window_violations"),
         cost_per_stop=mean_of("cost_per_stop"),
         cost_note="; ".join(notes),

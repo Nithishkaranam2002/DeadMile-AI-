@@ -107,23 +107,24 @@ def test_bootstrap_two_values():
     assert stats.bootstrap_median_ci([0.0, 1.0], resamples=20_000, seed=1) == (0.0, 1.0)
 
 
-def _run(name, slc, seed, dist, feasible=True, seed_used=True):
-    return InstanceRun(
-        instance=name,
-        slice=slc,
-        source="fixture",
-        seed=seed,
-        seed_used=seed_used,
-        feasible=feasible,
-        total_distance=dist,
-        vehicles_used=1,
-        runtime_s=1.0,
-        distance_unit="unit",
-        distance_label="test fixture",
-        labels=["fixture"],
-        data_version="fixture",
-        run_id=None,
-    )
+def _run(name, slc, seed, dist, feasible=True, seed_used=True, **extra):
+    fields = {
+        "instance": name,
+        "slice": slc,
+        "source": "fixture",
+        "seed": seed,
+        "seed_used": seed_used,
+        "feasible": feasible,
+        "total_distance": dist,
+        "vehicles_used": 1,
+        "runtime_s": 1.0,
+        "distance_unit": "unit",
+        "distance_label": "test fixture",
+        "labels": ["fixture"],
+        "data_version": "fixture",
+        "run_id": None,
+    }
+    return InstanceRun(**(fields | extra))
 
 
 def _ev(group, solver, runs, seeds):
@@ -193,3 +194,30 @@ def test_compare_refuses_mismatched_suites():
     b = _ev("candidate", "nn", [_run("Z", "C1", 1, 100)], [1])
     with pytest.raises(ValueError):
         compare_evaluations(b, a, ST)
+
+
+def test_other_metrics_are_seed_averaged_per_instance_then_averaged():
+    prod = {"productivity_name": "stops_per_driver_hour"}
+    champion = _ev(
+        "champion",
+        "pyvrp",
+        [
+            _run("A", "C1", 1, 100, vehicles_used=2, productivity=10.0, **prod),
+            _run("A", "C1", 2, 100, vehicles_used=4, productivity=12.0, **prod),  # A: 3, 11
+            _run("B", "C1", 1, 100, vehicles_used=5, productivity=20.0, **prod),  # B: 5, 20
+        ],
+        [1, 2],
+    )
+    candidate = _ev(
+        "candidate",
+        "nn",
+        [
+            _run("A", "C1", 1, 90, vehicles_used=1, productivity=8.0, **prod),
+            _run("B", "C1", 1, 90, vehicles_used=3, productivity=9.0, **prod),
+        ],
+        [1],
+    )
+    row = compare_evaluations(candidate, champion, ST).secondary[0]
+    assert row.champion.vehicles_used == 4.0 and row.champion.productivity == 15.5
+    assert row.champion.productivity_name == "stops_per_driver_hour"
+    assert row.candidate.vehicles_used == 2.0 and row.candidate.productivity == 8.5
