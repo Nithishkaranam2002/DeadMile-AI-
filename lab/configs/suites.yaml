@@ -1,35 +1,158 @@
 # Benchmark suites and frozen data splits.
-# Structure only. Splits are generated once with a fixed seed (Module 2),
-# stratified by Solomon class and Amazon city, and then committed.
-# The test split is read only by the promotion gate. The agent never loads it.
+# Splits were generated once by `uv run dmlab-harness make-splits` with the seed
+# below, stratified by Solomon class and Amazon city (thirds per stratum,
+# leftovers to validation, then test), and committed. Never regenerate or edit.
+# Read only by dmlab/harness/splits.py. The test split is read only by the
+# promotion gate (dmlab/safeguards/test_split.py). The agent never loads it.
 
 splits:
   # Seed used to create the splits. Set once in Module 2, then never changed.
-  seed: null
+  seed: 20261030
   # Date the splits were frozen (YYYY-MM-DD).
-  frozen_on: null
+  frozen_on: '2026-10-30'
   tune:
-    solomon: []        # instance names, e.g. from classes C1, C2, R1, R2, RC1, RC2
-    amazon: []         # route ids, Boston and Chicago subset
+    solomon:
+      - C102
+      - C107
+      - C109
+      - C202
+      - C203
+      - R107
+      - R110
+      - R111
+      - R112
+      - R202
+      - R203
+      - R210
+      - RC101
+      - RC103
+      - RC202
+      - RC204
+    amazon:
+      - RouteID_11f5aa13-f99a-4ad4-b221-c9007fe3f8f3
+      - RouteID_673e786f-f2c6-4f78-825d-53e22baeb620
+      - RouteID_6e85765e-d988-44e7-8e42-a932e2136834
+      - RouteID_a12a8e2b-5104-4937-b1ad-58c71a4df945
+      - RouteID_cf130157-12ed-4489-b8a8-4993acd91477
+      - RouteID_e6a5b397-809a-4610-aea8-5208ede0b35d
+      - RouteID_18ebc6f1-1bd5-4d79-bda6-3740014704eb
+      - RouteID_653048eb-f35c-4dbd-9f56-fba5021bb679
+      - RouteID_7bc28188-f664-496e-86cc-ff49b09cae42
+      - RouteID_88692c48-c4d3-4e59-91bf-4b63b43c6f8d
+      - RouteID_c0cd1897-ecd3-47ba-84e8-8ac7a14172b9
+      - RouteID_e8e95e75-a3c5-4425-9c88-2b413d353542
   validation:
-    solomon: []
-    amazon: []
+    solomon:
+      - C101
+      - C104
+      - C108
+      - C201
+      - C205
+      - C206
+      - R101
+      - R103
+      - R105
+      - R106
+      - R204
+      - R207
+      - R208
+      - R211
+      - RC102
+      - RC104
+      - RC106
+      - RC201
+      - RC206
+      - RC208
+    amazon:
+      - RouteID_125ebb7d-e6bd-4778-998d-f492c56ed320
+      - RouteID_309a335b-e1c6-4b40-8026-136bda97374b
+      - RouteID_587876a2-40af-4843-b7cf-4bdff6ccb775
+      - RouteID_647f71c9-1dea-4921-8acf-98743ada1c94
+      - RouteID_67ddd933-a2d3-486c-9a8e-c4452371b7fd
+      - RouteID_7863da93-b4a2-4a1c-8c42-e06b703d5f61
+      - RouteID_93a86967-2361-4cb8-93b8-c480972359a6
+      - RouteID_35cfd8d0-1b27-4979-b757-068be94e0bc0
+      - RouteID_6adc59a1-efe0-43a4-bf82-1c260f110de6
+      - RouteID_6ff4a6d0-00a3-491b-b198-288ad7682d21
+      - RouteID_a1b5df82-28b9-4167-bfca-47e90180ead9
+      - RouteID_a6ec3b18-67a9-45ca-a33d-ee81babd106a
+      - RouteID_dc0262d6-f3df-47b5-8276-c8f2942b6e4c
+      - RouteID_ddefa9e5-7b07-4e7e-bca7-33f25027c9dc
   test:
-    solomon: []
-    amazon: []
+    solomon:
+      - C103
+      - C105
+      - C106
+      - C204
+      - C207
+      - C208
+      - R102
+      - R104
+      - R108
+      - R109
+      - R201
+      - R205
+      - R206
+      - R209
+      - RC105
+      - RC107
+      - RC108
+      - RC203
+      - RC205
+      - RC207
+    amazon:
+      - RouteID_0fb4f63d-4646-430f-bab3-434a9f418e11
+      - RouteID_52e8fffb-fda2-4cde-a6e4-320674e4eba4
+      - RouteID_5a4f2d23-09f6-44a7-9337-0f9f075551f4
+      - RouteID_aab86e3e-3a3f-4e96-b18a-445e3c53414c
+      - RouteID_c274296c-a94d-4c36-b557-fb04c74aba43
+      - RouteID_c56b7af8-706c-4cf7-87f4-6bd9b95f01df
+      - RouteID_dfb6708d-7423-4d27-a2f0-62eba6253c0b
+      - RouteID_0a5e231b-4c35-443c-bb2d-e4a141a68cbd
+      - RouteID_2a6bc6ef-25ac-4b73-9537-bb3427285c15
+      - RouteID_3075519c-f07c-4974-805d-7961506f61c5
+      - RouteID_5048442a-7041-4614-84d1-aae57443750d
+      - RouteID_5172e238-0e0a-4706-a21e-077a073535a7
+      - RouteID_6fa9353e-3a3c-4687-9d97-0fc03b35da37
+      - RouteID_a0d1fa89-a692-4acc-9a14-ac43529e05eb
 
 suites:
   quick:
-    # Validation subset used during agent iterations.
+    # Validation subset used during agent iterations: 1 instance per Solomon
+    # class and 2 per Amazon city, picked with the split seed.
     split: validation
-    instances: []      # subset of splits.validation, chosen in Module 2
-    seeds: []          # 2 seeds per CLAUDE.md
-    time_limit_seconds: null
+    instances:
+      - RouteID_309a335b-e1c6-4b40-8026-136bda97374b
+      - RouteID_587876a2-40af-4843-b7cf-4bdff6ccb775
+      - C104
+      - C205
+      - RouteID_35cfd8d0-1b27-4979-b757-068be94e0bc0
+      - RouteID_dc0262d6-f3df-47b5-8276-c8f2942b6e4c
+      - R101
+      - R211
+      - RC102
+      - RC208
+    seeds: [1, 2]
+    time_limit_seconds: 5
   full:
-    # All instances of a split, used by the promotion gates.
-    split: null        # validation or test
-    seeds: []          # 5 seeds per CLAUDE.md
-    time_limit_seconds: null
+    # All instances of a split (validation, or test for the gate only).
+    seeds: [1, 2, 3, 4, 5]
+    time_limit_seconds: 30
+    # Second seed set, used only by the A/A self check (champion vs itself).
+    aa_seeds: [6, 7, 8, 9, 10]
+
+# Solvers without a seed (OR Tools, nearest neighbor) run once per instance,
+# with the first seed of the suite logged as unused. Only seeded solvers run
+# every seed.
+
+statistics:
+  # Bootstrap 95% CI of the median per instance relative improvement:
+  # resample instances with replacement.
+  bootstrap_resamples: 10000
+  bootstrap_seed: 20261030
+  ci_level: 0.95
+  # A tie is an exactly equal seed averaged distance. Ties are dropped by the
+  # Wilcoxon signed rank test (zero_method "wilcox") and counted separately.
 
 slices:
   # Results are always reported per slice, not only overall.
