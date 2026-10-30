@@ -144,3 +144,25 @@ health: ## Check health of all services via gateway
 		printf "Port $$port: "; \
 		curl -sf "http://localhost:$$port/health" > /dev/null 2>&1 && echo "OK" || echo "FAIL"; \
 	done
+
+# ===========================================================================
+# Experiment lab (see CLAUDE.md). Lab services live in docker-compose.lab.yml.
+# ===========================================================================
+.PHONY: lab-up lab-down lab-test lab-lint
+
+COMPOSE_LAB := docker compose -f docker-compose.yml -f docker-compose.lab.yml
+
+lab-up: ## Lab: start postgres, qdrant, mlflow and lab-api
+	@if [ ! -f $(ENV_FILE) ]; then echo "Missing $(ENV_FILE). Copy .env.example first."; exit 1; fi
+	$(COMPOSE_LAB) up -d --build postgres qdrant mlflow lab-api
+	@echo "  MLflow:  http://localhost:5050"
+	@echo "  Lab API: http://localhost:8020/health"
+
+lab-down: ## Lab: stop mlflow and lab-api only (keeps volumes)
+	$(COMPOSE_LAB) stop mlflow lab-api
+
+lab-test: ## Lab: run lab tests
+	cd lab && uv run pytest
+
+lab-lint: ## Lab: ruff lint and format check
+	cd lab && uv run ruff check . && uv run ruff format --check .

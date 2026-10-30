@@ -1,0 +1,56 @@
+# DeadMile AI — experiment lab services.
+# Always used together with the main file, never on its own:
+#   docker compose -f docker-compose.yml -f docker-compose.lab.yml up -d postgres qdrant mlflow lab-api
+# Or simply: make lab-up / make lab-down
+
+services:
+  mlflow:
+    build:
+      context: ./lab
+      dockerfile: docker/mlflow.Dockerfile
+    container_name: deadmile-mlflow
+    restart: unless-stopped
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER:-deadmile}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-deadmile_secret_change_me}
+      MLFLOW_DB_NAME: mlflow
+      # Host headers MLflow accepts: the host browser and other containers on deadmile-network.
+      MLFLOW_ALLOWED_HOSTS: "localhost,localhost:*,127.0.0.1,127.0.0.1:*,mlflow,mlflow:5000"
+    volumes:
+      - lab-mlflow-artifacts:/mlflow/artifacts
+    ports:
+      - "${LAB_MLFLOW_PORT:-5050}:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - deadmile-network
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:5000/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  lab-api:
+    build:
+      context: ./lab
+      dockerfile: docker/lab-api.Dockerfile
+    container_name: deadmile-lab-api
+    restart: unless-stopped
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow:5000
+    ports:
+      - "${LAB_API_PORT:-8020}:8000"
+    depends_on:
+      mlflow:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    networks:
+      - deadmile-network
+
+volumes:
+  lab-mlflow-artifacts:
