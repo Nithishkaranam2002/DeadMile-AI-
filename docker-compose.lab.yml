@@ -4,6 +4,13 @@
 # Or simply: make lab-up / make lab-down
 
 services:
+  # Existing Postgres (main compose file, unchanged), published on localhost
+  # only so the lab CLIs on the host reach the dmlab database (kill switch,
+  # gate runs, approvals, audit log, agent checkpoints). Module 4.
+  postgres:
+    ports:
+      - "127.0.0.1:${LAB_POSTGRES_PORT:-5433}:5432"
+
   # Existing Qdrant (main compose file, unchanged), published on localhost only
   # so the experiment agent CLI on the host can reach its memory collection.
   qdrant:
@@ -48,9 +55,13 @@ services:
     restart: unless-stopped
     environment:
       MLFLOW_TRACKING_URI: http://mlflow:5000
+      # The dmlab database in the existing Postgres (created by `dmlab-safeguards init-db`).
+      DMLAB_DB_URL: postgresql+psycopg://${POSTGRES_USER:-deadmile}:${POSTGRES_PASSWORD:-deadmile_secret_change_me}@postgres:5432/dmlab
     ports:
       - "${LAB_API_PORT:-8020}:8000"
     depends_on:
+      postgres:
+        condition: service_healthy
       mlflow:
         condition: service_healthy
       qdrant:

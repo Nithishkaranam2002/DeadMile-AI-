@@ -16,6 +16,7 @@
   text that is logged goes through ``redact``, which removes the value of any
   environment variable that looks like a secret.
 * Tests use ``FakeLLM`` with fixed answers; they never call a real model.
+* Kill switch (Module 4): checked before every call, for every client.
 """
 
 import json
@@ -28,6 +29,8 @@ from collections.abc import Sequence
 from typing import Any
 
 from pydantic import BaseModel
+
+from dmlab.safeguards import killswitch
 
 SECRET_NAME = re.compile(r"(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL)", re.IGNORECASE)
 REDACTED = "[REDACTED]"
@@ -107,6 +110,7 @@ class LLMClient(ABC):
         schema: type[BaseModel],
         max_output_tokens: int,
     ) -> LLMCall:
+        killswitch.check(f"before the LLM call at {node}")
         messages = self.prepare(messages, schema)
         start = time.perf_counter()
         text, reasoning, p_tok, c_tok, r_tok, cost, note = self._complete(

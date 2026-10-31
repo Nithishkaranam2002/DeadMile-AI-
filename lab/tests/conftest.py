@@ -2,6 +2,7 @@
 
 import json
 import math
+import os
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,22 @@ from dmlab.data.solomon import load_solomon
 from dmlab.routing.model import Depot, Fleet, ProblemInstance, Stop, Units
 
 FIXTURES = Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def lab_db(tmp_path_factory: pytest.TempPathFactory) -> str:
+    """A temporary SQLite dmlab database for every test (kill switch, gates,
+    approvals, audit log). The kill switch fails closed, so runners need it.
+    The env var is cleared so a real kill switch in the shell does not leak in."""
+    from dmlab.safeguards import db
+
+    url = f"sqlite:///{tmp_path_factory.mktemp('dmlab_db') / 'dmlab.sqlite'}"
+    os.environ[db.DB_URL_ENV] = url
+    os.environ.pop("DMLAB_KILL_SWITCH", None)
+    db.init_db()
+    return url
+
+
 TINY_SOLOMON = FIXTURES / "tiny_solomon.txt"
 TINY_AMAZON = FIXTURES / "tiny_amazon"
 BOSTON_ROUTE = "RouteID_00000000-0000-0000-0000-00000000000a"

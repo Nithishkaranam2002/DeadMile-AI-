@@ -9,6 +9,15 @@ outcomes to MLflow.
 be added later with the same contract: ``SolveTask`` and ``TaskOutcome`` are
 pydantic models that serialize to JSON, so a Temporal workflow can fan tasks
 out as activities that call ``run_task`` and stream outcomes back.
+
+Kill switch (Module 4): every runner checks it before it starts each task, so
+no new solve run starts once it is on. Tasks are handed to the pool one at a
+time (at most one waiting per worker), so nothing is queued past a check.
+
+Plugin code (code variants) never runs on the host: ``LocalRunner`` refuses
+any task whose config carries plugins. Those run in the sandbox runner
+(dmlab/safeguards/sandbox), and so does the champion side of the same
+comparison, so both sides run on the same machine (see ``execution_for``).
 """
 
 import hashlib
@@ -16,7 +25,7 @@ import json
 import signal
 from abc import ABC, abstractmethod
 from collections.abc import Iterator, Sequence
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, wait
 from multiprocessing import get_context
 from typing import Any
 
@@ -26,6 +35,7 @@ from dmlab.paths import budgets_config
 from dmlab.routing.formulation import Formulation
 from dmlab.routing.runner import InstanceRef, run_task
 from dmlab.routing.solver import SOLVER_NAMES, get_solver
+from dmlab.safeguards import killswitch
 
 
 class SolverConfig(BaseModel):
@@ -37,7 +47,7 @@ class SolverConfig(BaseModel):
 
     solver: str
     params: dict[str, Any] = Field(default_factory=dict)
-    # Plugin name -> Python source (code variants, Module 4). Not runnable yet.
+    # Plugin name -> Python source (code variants). Runs only in the sandbox.
     plugins: dict[str, str] = Field(default_factory=dict)
     # How the solver sees the problem (formulation variants, see
     # dmlab/routing/formulation.py). Results are always measured on the
@@ -84,11 +94,6 @@ class SolveTask(BaseModel):
     seed: int
     time_limit_s: float
 
-    def model_post_init(self, _: Any) -> None:
-        # Plugins run only inside the sandbox, which arrives in Module 4.
-        if self.config.plugins:
-            raise ValueError("plugin code variants are disabled until Module 4 (sandbox)")
-
 
 class TaskOutcome(BaseModel):
     task: SolveTask
@@ -96,11 +101,25 @@ class TaskOutcome(BaseModel):
     error: str | None = None
 
 
+HOST = "host"
+SANDBOX = "sandbox"
+
+
+def execution_for(configs: Sequence[SolverConfig]) -> str:
+    """Where a comparison runs: in the sandbox when any side carries plugin
+    code, so champion and challenger always run on the same machine."""
+    return SANDBOX if any(c.plugins for c in configs) else HOST
+
+
 class Runner(ABC):
+    execution: str = HOST
+    workers: int = 1
+
     @abstractmethod
     def run(self, tasks: Sequence[SolveTask]) -> Iterator[TaskOutcome]:
         """Yield one outcome per task, in completion order. Crashes become
-        outcomes with ``error`` set; they are never dropped."""
+        outcomes with ``error`` set; they are never dropped. Raises
+        ``KillSwitchActive`` when the kill switch is on before a task starts."""
 
 
 WALL_CLOCK_ERROR = "wall clock budget exceeded"
@@ -148,12 +167,32 @@ class LocalRunner(Runner):
         self.workers = workers
 
     def run(self, tasks: Sequence[SolveTask]) -> Iterator[TaskOutcome]:
+        with_plugins = [t for t in tasks if t.config.plugins]
+        if with_plugins:
+            raise ValueError(
+                "plugin code runs only in the sandbox, never on the host "
+                f"({len(with_plugins)} tasks carry plugins)"
+            )
+        if not tasks:
+            return
         ctx = get_context("spawn")
-        with ProcessPoolExecutor(max_workers=self.workers, mp_context=ctx) as pool:
-            futures = {pool.submit(_execute, t): t for t in tasks}
-            for fut in as_completed(futures):
-                task = futures[fut]
-                try:
-                    yield TaskOutcome(task=task, payload=fut.result())
-                except Exception as exc:  # a crash is reported, never hidden
-                    yield TaskOutcome(task=task, error=repr(exc))
+        todo = list(tasks)
+        running: dict[Future, SolveTask] = {}
+        pool = ProcessPoolExecutor(max_workers=self.workers, mp_context=ctx)
+        try:
+            while todo or running:
+                while todo and len(running) < self.workers:
+                    killswitch.check("before a solve run")
+                    task = todo.pop(0)
+                    running[pool.submit(_execute, task)] = task
+                done, _ = wait(running, return_when=FIRST_COMPLETED)
+                for fut in done:
+                    task = running.pop(fut)
+                    try:
+                        yield TaskOutcome(task=task, payload=fut.result())
+                    except Exception as exc:  # a crash is reported, never hidden
+                        yield TaskOutcome(task=task, error=repr(exc))
+        finally:
+            # On a kill switch stop (or any error) nothing new starts; solves
+            # already running finish within their time limit.
+            pool.shutdown(wait=True, cancel_futures=True)

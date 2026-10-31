@@ -12,6 +12,7 @@ import sys
 
 import mlflow
 
+from dmlab.cli.env import load_env
 from dmlab.routing.runner import EXPERIMENT, resolve_instances, run_batch
 from dmlab.routing.solver import SOLVER_NAMES
 from dmlab.routing.summary import build_rows, fetch_runs, sanity_problems, to_markdown
@@ -77,6 +78,7 @@ def main() -> None:
     s.add_argument("--log", action="store_true", help="also log the table to MLflow")
     s.set_defaults(func=summary)
     args = parser.parse_args()
+    load_env()  # the kill switch reads the dmlab database
     args.func(args)
 
 

@@ -46,11 +46,14 @@ EXCLUDED_FILES = frozenset(
         "dmlab/cli/harness.py",
         "dmlab/cli/route.py",
         "dmlab/cli/data.py",
+        # Safeguards that decide about finished results, never about a solve.
+        # The kill switch (and the db and audit modules it uses) and the
+        # sandbox are on the solve path, so they are hashed.
+        "dmlab/safeguards/test_split.py",
+        "dmlab/cli/safeguards.py",
     }
 )
-EXCLUDED_DIRS = frozenset(
-    {"dmlab/agent", "dmlab/safeguards", "dmlab/api", "dmlab/forecasting", "dmlab/sim"}
-)
+EXCLUDED_DIRS = frozenset({"dmlab/agent", "dmlab/api", "dmlab/forecasting", "dmlab/sim"})
 HASHED_FILES = (
     "configs/datasets.yaml",
     "configs/amazon_subset.yaml",

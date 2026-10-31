@@ -32,6 +32,8 @@ from dmlab.agent.variants import (
 )
 from dmlab.harness import registry
 from dmlab.harness.runners import SolverConfig
+from dmlab.safeguards.killswitch import KillSwitchActive
+from dmlab.safeguards.killswitch import check as killswitch_check
 
 MAX_OUTPUT_TOKENS = {"hypothesize": 4000, "propose": 8000, "reflect": 4000}
 MODULE = "3"
@@ -86,12 +88,18 @@ def _call_llm(
 ) -> tuple[LLMCall | None, str | None]:
     """Budget check, call, log prompt and response. Returns (call, stop_reason)."""
     max_out = MAX_OUTPUT_TOKENS[node]
+    try:
+        killswitch_check(f"before the LLM call at {node}")
+    except KillSwitchActive as exc:
+        return None, str(exc)
     worst_tokens, worst_usd = ctx.llm.worst_case(ctx.llm.prepare(messages, schema), max_out)
     refusal = ctx.budget.llm_refusal(worst_tokens, worst_usd)
     if refusal:
         return None, f"{refusal} (before {node})"
     try:
         call = ctx.llm.complete(node, messages, schema, max_out)
+    except KillSwitchActive as exc:
+        return None, str(exc)
     except LLMError as exc:
         return None, f"LLM call failed at {node}: {exc}"
     ctx.budget.add_llm(call.prompt_tokens + call.completion_tokens, call.cost_usd)
@@ -346,62 +354,69 @@ def run_quick(state: CycleState, runtime: Runtime[CycleContext]) -> dict[str, An
             update["stop_reason"] = refusal
             ctx.say(f"  {vid} not run: {refusal}")
             break
-        if "quick" not in ctx.champion_evals:
-            with child_run(
-                ctx,
-                f"champion baseline quick ({suite.split})",
-                {"run_kind": "agent_champion_baseline", "suite": suite.name},
-            ) as run:
-                ev = evaluate_champion(champion, suite, ctx.runner, ctx.git, ctx.champion_ref)
-                ctx.budget.add_cpu(fresh_cpu_seconds(ev, wall))
-                ctx.champion_evals["quick"] = ev
-                update["champion_quick_run"] = run.info.run_id
-        tags = {
-            "run_kind": "agent_variant",
-            "variant_id": vid,
-            "variant_kind": rec.kind or "",
-            "config_key": rec.config_key or "",
-            "agent_session": state.session,
-            "agent_cycle": state.cycle_id,
-            "llm_model": state.model,
-        }
-        ctx.say(f"  {vid} quick run: {rec.config_label}")
-        with child_run(ctx, f"{vid} {rec.name}"[:250], tags) as run:
-            rec.run_id = run.info.run_id
-            mlflow.log_dict(
-                {"variant": rec.variant, "raw_proposal": rec.raw, "solver_config": rec.config},
-                "variant.json",
-            )
-            mlflow.log_params(
-                {
-                    "variant_id": vid,
-                    "kind": rec.kind,
-                    "config": rec.config_label[:500],
-                    "suite": suite.name,
-                    "split": suite.split,
-                    "time_limit_s": suite.time_limit_s,
-                    "seeds": ",".join(map(str, suite.seeds)),
-                }
-            )
-            mlflow.log_metrics({f"llm_share_{k}": v for k, v in rec.llm_share.items()})
-            mlflow.set_tag(
-                "llm_share_note",
-                "equal share of the proposing LLM call "
-                f"(call {rec.proposed_by_call}); exact per call usage is on the cycle run",
-            )
-            summary, _ = evaluate_candidate(
-                config,
-                ctx.champion_evals["quick"],
-                suite,
-                ctx.runner,
-                ctx.git,
-                run.info.run_id,
-                wall,
-                with_gate_checks=False,
-            )
-            rec.quick = summary
-            ctx.budget.add_cpu(summary.cpu_seconds)
-            mlflow.log_metrics(_summary_metrics("quick", summary))
+        try:
+            if "quick" not in ctx.champion_evals:
+                with child_run(
+                    ctx,
+                    f"champion baseline quick ({suite.split})",
+                    {"run_kind": "agent_champion_baseline", "suite": suite.name},
+                ) as run:
+                    ev = evaluate_champion(champion, suite, ctx.runner, ctx.git, ctx.champion_ref)
+                    ctx.budget.add_cpu(fresh_cpu_seconds(ev, wall))
+                    ctx.champion_evals["quick"] = ev
+                    update["champion_quick_run"] = run.info.run_id
+            tags = {
+                "run_kind": "agent_variant",
+                "variant_id": vid,
+                "variant_kind": rec.kind or "",
+                "config_key": rec.config_key or "",
+                "agent_session": state.session,
+                "agent_cycle": state.cycle_id,
+                "llm_model": state.model,
+            }
+            ctx.say(f"  {vid} quick run: {rec.config_label}")
+            with child_run(ctx, f"{vid} {rec.name}"[:250], tags) as run:
+                rec.run_id = run.info.run_id
+                mlflow.log_dict(
+                    {"variant": rec.variant, "raw_proposal": rec.raw, "solver_config": rec.config},
+                    "variant.json",
+                )
+                mlflow.log_params(
+                    {
+                        "variant_id": vid,
+                        "kind": rec.kind,
+                        "config": rec.config_label[:500],
+                        "suite": suite.name,
+                        "split": suite.split,
+                        "time_limit_s": suite.time_limit_s,
+                        "seeds": ",".join(map(str, suite.seeds)),
+                    }
+                )
+                mlflow.log_metrics({f"llm_share_{k}": v for k, v in rec.llm_share.items()})
+                mlflow.set_tag(
+                    "llm_share_note",
+                    "equal share of the proposing LLM call "
+                    f"(call {rec.proposed_by_call}); exact per call usage is on the cycle run",
+                )
+                summary, _ = evaluate_candidate(
+                    config,
+                    ctx.champion_evals["quick"],
+                    suite,
+                    ctx.runner,
+                    ctx.git,
+                    run.info.run_id,
+                    wall,
+                    with_gate_checks=False,
+                )
+                rec.quick = summary
+                ctx.budget.add_cpu(summary.cpu_seconds)
+                mlflow.log_metrics(_summary_metrics("quick", summary))
+        except KillSwitchActive as exc:
+            update["stop_reason"] = str(exc)
+            if rec.quick is None:
+                rec.status, rec.reason = "rejected", f"not run: {exc}"
+            ctx.say(f"  {vid} stopped: {exc}")
+            break
         if summary.wall_clock_exceeded:
             update["stop_reason"] = (
                 f"per run wall clock budget ({wall:g} s) exceeded while running {vid}"
@@ -590,57 +605,65 @@ def confirm(state: CycleState, runtime: Runtime[CycleContext]) -> dict[str, Any]
     if len(chosen) < len(promising):
         ctx.say(f"  CPU budget: confirming {len(chosen)} of {len(promising)} promising variants")
     update: dict[str, Any] = {}
-    with child_run(
-        ctx,
-        f"champion baseline full ({suite.split})",
-        {"run_kind": "agent_champion_baseline", "suite": suite.name},
-    ) as run:
-        ev = evaluate_champion(champion, suite, ctx.runner, ctx.git, ctx.champion_ref)
-        ctx.budget.add_cpu(fresh_cpu_seconds(ev, wall))
-        ctx.champion_evals["full"] = ev
-        update["champion_full_run"] = run.info.run_id
-    for v in chosen:
-        ctx.say(f"  {v.vid} confirmation on full {suite.split}: {v.config_label}")
+    try:
         with child_run(
             ctx,
-            f"{v.vid} confirm full {suite.split}",
-            {"run_kind": "agent_confirmation", "variant_id": v.vid, "agent_cycle": state.cycle_id},
-            parent=v.run_id,
+            f"champion baseline full ({suite.split})",
+            {"run_kind": "agent_champion_baseline", "suite": suite.name},
         ) as run:
-            summary, _ = evaluate_candidate(
-                SolverConfig(**v.config),
-                ev,
-                suite,
-                ctx.runner,
-                ctx.git,
-                run.info.run_id,
-                wall,
-                with_gate_checks=True,
+            ev = evaluate_champion(champion, suite, ctx.runner, ctx.git, ctx.champion_ref)
+            ctx.budget.add_cpu(fresh_cpu_seconds(ev, wall))
+            ctx.champion_evals["full"] = ev
+            update["champion_full_run"] = run.info.run_id
+        for v in chosen:
+            ctx.say(f"  {v.vid} confirmation on full {suite.split}: {v.config_label}")
+            with child_run(
+                ctx,
+                f"{v.vid} confirm full {suite.split}",
+                {
+                    "run_kind": "agent_confirmation",
+                    "variant_id": v.vid,
+                    "agent_cycle": state.cycle_id,
+                },
+                parent=v.run_id,
+            ) as run:
+                summary, _ = evaluate_candidate(
+                    SolverConfig(**v.config),
+                    ev,
+                    suite,
+                    ctx.runner,
+                    ctx.git,
+                    run.info.run_id,
+                    wall,
+                    with_gate_checks=True,
+                )
+                mlflow.log_metrics(_summary_metrics("full", summary))
+            v.full = summary
+            ctx.budget.add_cpu(summary.cpu_seconds)
+            if summary.wall_clock_exceeded:
+                update["stop_reason"] = (
+                    f"per run wall clock budget ({wall:g} s) exceeded confirming {v.vid}"
+                )
+                v.status, v.reason = "crashed", "a confirmation run exceeded the wall clock budget"
+                break
+            failed = [g["gate"] for g in summary.gate_checks if not g["met"]]
+            quick = f"quick {_pct(v.quick.median_rel_improvement)}"
+            full = (
+                f"full validation {_pct(summary.median_rel_improvement)} "
+                f"[{_pct(summary.ci_low)}, {_pct(summary.ci_high)}]"
             )
-            mlflow.log_metrics(_summary_metrics("full", summary))
-        v.full = summary
-        ctx.budget.add_cpu(summary.cpu_seconds)
-        if summary.wall_clock_exceeded:
-            update["stop_reason"] = (
-                f"per run wall clock budget ({wall:g} s) exceeded confirming {v.vid}"
-            )
-            v.status, v.reason = "crashed", "a confirmation run exceeded the wall clock budget"
-            break
-        failed = [g["gate"] for g in summary.gate_checks if not g["met"]]
-        quick = f"quick {_pct(v.quick.median_rel_improvement)}"
-        full = (
-            f"full validation {_pct(summary.median_rel_improvement)} "
-            f"[{_pct(summary.ci_low)}, {_pct(summary.ci_high)}]"
-        )
-        if failed:
-            v.status = "not_confirmed"
-            v.reason = f"{quick}; {full}; gate checks not met: {', '.join(failed)}"
-        else:
-            v.status = "confirmed"
-            v.reason = f"{quick}; {full}; every gate check met on full validation"
-        ctx.say(f"  {v.vid} {v.status}: {v.reason}")
-        MlflowClient().set_tag(v.run_id, "status", v.status)
-        MlflowClient().set_tag(v.run_id, "status_reason", v.reason[:5000])
+            if failed:
+                v.status = "not_confirmed"
+                v.reason = f"{quick}; {full}; gate checks not met: {', '.join(failed)}"
+            else:
+                v.status = "confirmed"
+                v.reason = f"{quick}; {full}; every gate check met on full validation"
+            ctx.say(f"  {v.vid} {v.status}: {v.reason}")
+            MlflowClient().set_tag(v.run_id, "status", v.status)
+            MlflowClient().set_tag(v.run_id, "status_reason", v.reason[:5000])
+    except KillSwitchActive as exc:
+        update["stop_reason"] = str(exc)
+        ctx.say(f"  confirmation stopped: {exc}")
     return update | {"variants": variants, "budgets": ctx.budget.snapshot()}
 
 

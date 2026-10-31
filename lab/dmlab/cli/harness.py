@@ -14,6 +14,7 @@ import json
 import sys
 from datetime import date
 
+from dmlab.cli.env import load_env
 from dmlab.data.solomon import list_instances
 from dmlab.harness import registry, splits
 from dmlab.harness.compare import compare
@@ -134,6 +135,7 @@ def main() -> None:
     suite_args(s)
     s.set_defaults(func=cmd_selfcheck)
     args = parser.parse_args()
+    load_env()  # the kill switch reads the dmlab database
     args.func(args)
 
 

@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from dmlab.harness import fingerprint as fpm
-from dmlab.harness.runners import SolverConfig, SolveTask
+from dmlab.harness.runners import LocalRunner, SolverConfig, SolveTask
 from dmlab.paths import LAB_DIR
 from dmlab.routing.runner import InstanceRef
 
@@ -142,10 +142,19 @@ def test_solver_config_and_plugin_code_change_the_fingerprint(lab_copy):
     assert "plugin init" in p1.label()
 
 
-def test_plugin_configs_cannot_run_yet():
+def test_plugin_configs_never_run_on_the_host():
     cfg = SolverConfig(solver="ortools", plugins={"init": "x = 1\n"})
-    with pytest.raises(ValueError):
-        SolveTask(group="g", config=cfg, ref=InstanceRef("fixture", "x"), seed=1, time_limit_s=1)
+    task = SolveTask(group="g", config=cfg, ref=InstanceRef("fixture", "x"), seed=1, time_limit_s=1)
+    with pytest.raises(ValueError, match="only in the sandbox"):
+        list(LocalRunner(1).run([task]))
+
+
+def test_kill_switch_is_hashed_and_gate_code_is_not(lab_copy):
+    before = _fp(lab_copy)
+    _append(lab_copy / "dmlab/safeguards/test_split.py")
+    assert _fp(lab_copy) == before
+    _append(lab_copy / "dmlab/safeguards/killswitch.py")
+    assert _fp(lab_copy) != before
 
 
 def test_manifest_lists_what_is_hashed(lab_copy):
@@ -213,11 +222,10 @@ def test_excluded_lists_are_pinned():
     # Changing what is excluded must be a deliberate, reviewed change.
     assert {
         "dmlab/agent",
-        "dmlab/safeguards",
         "dmlab/api",
         "dmlab/forecasting",
         "dmlab/sim",
     } == fpm.EXCLUDED_DIRS
-    assert len(fpm.EXCLUDED_FILES) == 11
+    assert len(fpm.EXCLUDED_FILES) == 13
     for rel in fpm.EXCLUDED_FILES:
         assert (LAB_DIR / rel).exists(), rel
